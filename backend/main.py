@@ -48,6 +48,17 @@ def api_me(req: Request):
     return me(req)
 
 
+# ---------- 对战房间列表 ----------
+@app.get("/api/battles")
+def list_battles(req: Request):
+    """列出所有未结束的对战房间。"""
+    user = me(req)
+    return {
+        "user": user,
+        "battles": store.list_active_battles(user["id"]),
+    }
+
+
 # ---------- 对战 ----------
 class CreateBody(BaseModel):
     type: str  # singles | doubles

@@ -5,6 +5,17 @@ if (!BID) {
   location.href = '/';
 }
 
+// 识别手表端：小屏幕 + 高设备像素比 + 短边 <= 350px
+function isWatchClient() {
+  const shortSide = Math.min(window.innerWidth, window.innerHeight);
+  const ratio = window.devicePixelRatio || 1;
+  const ua = (navigator.userAgent || '').toLowerCase();
+  const watchUA = ua.includes('watch') || ua.includes('wearable') || ua.includes('smart-tv') === false && (
+    /android.*\bw\b/.test(ua) || ua.includes('watchos') || ua.includes('watchkit')
+  );
+  return shortSide <= 350 || (shortSide <= 400 && ratio >= 2) || watchUA;
+}
+
 let pollTimer = null;
 let lastPlayerCount = -1;
 
@@ -78,6 +89,16 @@ function render(data) {
     $('#shareLink').textContent = url;
     $('#copyBtn').onclick = async () => {
       try { await navigator.clipboard.writeText(url); toast('邀请链接已复制'); }
+      catch { toast('复制失败，请手动复制'); }
+    };
+    // 手表按钮：手表端点击直接跳转，PC/手机端点复制
+    $('#watchBtn').onclick = async () => {
+      const watchUrl = `${location.origin}/watch.html?id=${BID}`;
+      if (isWatchClient()) {
+        location.href = watchUrl;
+        return;
+      }
+      try { await navigator.clipboard.writeText(watchUrl); toast('手表计分链接已复制'); }
       catch { toast('复制失败，请手动复制'); }
     };
   }

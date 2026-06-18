@@ -66,6 +66,8 @@
     cursor: pointer;
     position: relative;
     overflow: hidden;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
   .blue { background-color: #007AFF; }
   .red  { background-color: #FF3B30; }
@@ -377,6 +379,11 @@
 <script>
 // 阻止页面滚动（Apple Watch / iOS）
 document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+// 禁用 iOS 双指捏合与双击缩放（快速点击页面会放大）
+['gesturestart', 'gesturechange', 'gestureend', 'dblclick'].forEach(evt => {
+  document.addEventListener(evt, e => e.preventDefault(), { passive: false });
+});
 
 const MID = new URLSearchParams(location.search).get('m');
 const RING_C = 2 * Math.PI * 52; // ~326.73

@@ -15,6 +15,7 @@ const API = {
     return data;
   },
   me() { return this._fetch('/api/me'); },
+  listBattles() { return this._fetch('/api/battles'); },
   createBattle(type, maxPlayers, totalMatches, bestOf = 3, gamePoint = 21) {
     return this._fetch('/api/battle/create', {
       method: 'POST',

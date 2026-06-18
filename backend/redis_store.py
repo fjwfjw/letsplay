@@ -207,3 +207,38 @@ class Store:
             self._refresh_battle_ttl(bid, FINISHED_TTL)
             return True
         return False
+
+    def list_active_battles(self, uid: str = None) -> list:
+        """扫描所有未结束的对战，可选判断 uid 是否为玩家。
+
+        返回按创建时间倒序排列的列表，每项含 battle 基础字段、玩家数、玩家列表、
+        以及当前用户是否已加入该对战 (joined)。
+        """
+        out = []
+        for key in self.r.scan_iter(match="battle:*", count=200):
+            key = key.decode() if isinstance(key, bytes) else key
+            # 仅取 battle hash 本身，跳过 battle:*:players / battle:*:matches
+            if key.endswith(":players") or key.endswith(":matches"):
+                continue
+            bid = key.split(":", 1)[1]
+            battle = self.get_battle(bid)
+            if not battle or battle["status"] == "finished":
+                continue
+            players = self.get_players(bid)
+            out.append({
+                "id": bid,
+                "type": battle["type"],
+                "max_players": battle["max_players"],
+                "total_matches": battle["total_matches"],
+                "best_of": battle["best_of"],
+                "game_point": battle["game_point"],
+                "status": battle["status"],
+                "creator_id": battle["creator_id"],
+                "created_at": int(battle["created_at"]),
+                "players_count": len(players),
+                "players": players,
+                "joined": uid in [p["id"] for p in players] if uid else False,
+            })
+        out.sort(key=lambda x: x["created_at"], reverse=True)
+        return out
+

@@ -4,12 +4,29 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>LETSLAY · 在线对战记分</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%23d4ff3a'/%3E%3Cstop offset='100%25' style='stop-color:%23ff5e3a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='96' fill='%2307090f'/%3E%3Ctext x='256' y='340' font-family='Arial, sans-serif' font-size='240' font-weight='900' fill='url(%23bg)' text-anchor='middle'%3E21%3C/text%3E%3C/svg%3E" />
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%23d4ff3a'/%3E%3Cstop offset='100%25' style='stop-color:%23ff5e3a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='96' fill='%2307090f'/%3E%3Ctext x='256' y='340' font-family='Arial, sans-serif' font-size='240' font-weight='900' fill='url(%23bg)' text-anchor='middle'%3E21%3C/text%3E%3C/svg%3E" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="LETSLAY" />
+  <meta name="theme-color" content="#07090f" />
   <link rel="stylesheet" href="/static/css/style.css" />
 </head>
 <body>
   <div class="shell">
     <!-- 顶栏 -->
     <header class="topbar">
+      <button class="side-rail-btn" id="roomsBtn" aria-label="查看对战房间">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+          <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+          <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+          <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+        </svg>
+        <span class="side-rail-label">房间</span>
+        <span class="side-rail-dot" id="roomsDot" hidden></span>
+      </button>
       <div class="brand">
         <span class="mark">LETSLAY</span>
         <span class="sub">Live Match Scoring</span>
@@ -131,6 +148,19 @@
       </div>
     </section>
   </div>
+
+  <!-- 房间抽屉 -->
+  <div class="drawer-mask" id="drawerMask" hidden></div>
+  <aside class="drawer" id="roomsDrawer" hidden aria-label="对战房间列表">
+    <div class="drawer-head">
+      <div class="drawer-title">对战房间</div>
+      <button class="drawer-close" id="drawerClose" aria-label="关闭">×</button>
+    </div>
+    <div class="drawer-sub" id="drawerSub">进行中的对战</div>
+    <div class="drawer-list" id="drawerList">
+      <div class="drawer-empty">加载中…</div>
+    </div>
+  </aside>
 
   <script src="/static/js/api.js"></script>
   <script src="/static/js/app.js"></script>

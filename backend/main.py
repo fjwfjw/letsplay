@@ -338,32 +338,33 @@ def get_ranking(bid: str):
 
 
 # ---------- 静态前端 ----------
-FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
-FRONTEND_DIR = os.path.abspath(FRONTEND_DIR)
+# 前端文件在项目根目录（与 GitHub Pages 部署结构一致）
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 
 @app.get("/")
 def index():
-    return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+    return FileResponse(os.path.join(ROOT_DIR, "index.html"))
 
 
-# 静态资源（css/js）
-app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+# 静态资源（css/js 用相对路径引用，挂载 /css 和 /js）
+app.mount("/css", StaticFiles(directory=os.path.join(ROOT_DIR, "css")), name="css")
+app.mount("/js", StaticFiles(directory=os.path.join(ROOT_DIR, "js")), name="js")
 
 
 @app.get("/battle.html")
 def battle_page():
-    return FileResponse(os.path.join(FRONTEND_DIR, "battle.html"))
+    return FileResponse(os.path.join(ROOT_DIR, "battle.html"))
 
 
 @app.get("/matches.html")
 def matches_page():
-    return FileResponse(os.path.join(FRONTEND_DIR, "matches.html"))
+    return FileResponse(os.path.join(ROOT_DIR, "matches.html"))
 
 
 @app.get("/watch.html")
 def watch_page():
-    return FileResponse(os.path.join(FRONTEND_DIR, "watch.html"))
+    return FileResponse(os.path.join(ROOT_DIR, "watch.html"))
 
 
 if __name__ == "__main__":

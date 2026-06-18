@@ -283,5 +283,220 @@ def watch_page():
 
 
 if __name__ == "__main__":
+    import argparse
+    import platform
+    import signal
+    import subprocess
+    import sys
+    import time
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+    IS_WINDOWS = sys.platform == "win32"
+    IS_MACOS = sys.platform == "darwin"
+    IS_BSD = sys.platform.startswith("freebsd") or IS_MACOS
+    IS_POSIX = not IS_WINDOWS
+
+    parser = argparse.ArgumentParser(description="LetsPlay 对战记分后端")
+    parser.add_argument("--host", default="0.0.0.0", help="监听地址 (默认 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=8000, help="监听端口 (默认 8000)")
+    parser.add_argument("--daemon", "-d", action="store_true", help="以守护进程方式后台运行")
+    parser.add_argument("--stop", action="store_true", help="停止后台运行的服务")
+    parser.add_argument("--status", action="store_true", help="查看服务运行状态")
+    parser.add_argument("--pidfile", default="letsplay.pid", help="PID 文件路径 (默认 letsplay.pid)")
+    parser.add_argument("--logfile", default="letsplay.log", help="日志文件路径 (默认 letsplay.log)")
+    args = parser.parse_args()
+
+    def _pid_alive(pid: int) -> bool:
+        """跨平台检测进程是否存活。"""
+        if IS_WINDOWS:
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            PROCESS_QUERY_INFORMATION = 0x0400
+            STILL_ACTIVE = 259
+            handle = kernel32.OpenProcess(PROCESS_QUERY_INFORMATION, False, pid)
+            if not handle:
+                return False
+            try:
+                exit_code = ctypes.c_ulong()
+                kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
+                return exit_code.value == STILL_ACTIVE
+            finally:
+                kernel32.CloseHandle(handle)
+        else:
+            try:
+                os.kill(pid, 0)
+                return True
+            except (ProcessLookupError, PermissionError):
+                return False
+            except OSError:
+                return False
+
+    def _terminate_process(pid: int, graceful: bool = True) -> bool:
+        """跨平台终止进程。
+
+        macOS / Linux: 先 SIGTERM 进程组（同时终止子进程），超时后 SIGKILL。
+        Windows: taskkill /T 终止进程树。
+        """
+        if IS_WINDOWS:
+            try:
+                subprocess.run(
+                    ["taskkill", "/F" if not graceful else "/T", "/PID", str(pid)],
+                    capture_output=True, check=False,
+                )
+                return True
+            except FileNotFoundError:
+                # 极端回退：直接发信号（需要 pywin32）
+                return False
+        else:
+            try:
+                if graceful:
+                    # 优先终止整个进程组（macOS / Linux 均支持）
+                    try:
+                        os.killpg(os.getpgid(pid), signal.SIGTERM)
+                    except (ProcessLookupError, PermissionError, OSError):
+                        os.kill(pid, signal.SIGTERM)
+                    # 等待最多 5 秒
+                    for _ in range(50):
+                        time.sleep(0.1)
+                        if not _pid_alive(pid):
+                            return True
+                    # 兜底：SIGKILL
+                    try:
+                        os.killpg(os.getpgid(pid), signal.SIGKILL)
+                    except (ProcessLookupError, PermissionError, OSError):
+                        os.kill(pid, signal.SIGKILL)
+                else:
+                    try:
+                        os.killpg(os.getpgid(pid), signal.SIGKILL)
+                    except (ProcessLookupError, PermissionError, OSError):
+                        os.kill(pid, signal.SIGKILL)
+                return True
+            except (ProcessLookupError, OSError):
+                return False
+
+    if args.daemon:
+        pidfile = args.pidfile
+        logfile = args.logfile
+
+        # 检查是否已在运行
+        if os.path.exists(pidfile):
+            try:
+                with open(pidfile, "r") as f:
+                    old_pid = int(f.read().strip())
+                if _pid_alive(old_pid):
+                    print(f"服务已在运行 (PID {old_pid})，如需重启请先停止")
+                    sys.exit(1)
+            except (ValueError, OSError):
+                pass
+            # 旧 PID 文件已失效，清理
+            try:
+                os.remove(pidfile)
+            except FileNotFoundError:
+                pass
+
+        # 以后台方式启动新进程
+        log_f = open(logfile, "a", encoding="utf-8")
+
+        # 构造启动命令（不带 --daemon，避免无限递归）
+        cmd = [sys.executable, os.path.abspath(__file__),
+               "--host", args.host, "--port", str(args.port)]
+
+        popen_kwargs = {
+            "stdout": log_f,
+            "stderr": log_f,
+            "stdin": subprocess.DEVNULL,
+        }
+
+        if IS_WINDOWS:
+            # 脱离父进程，独立进程组
+            DETACHED_PROCESS = 0x00000008
+            CREATE_NEW_PROCESS_GROUP = 0x00000200
+            popen_kwargs["creationflags"] = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+        else:
+            # macOS / Linux: 启动新会话
+            popen_kwargs["start_new_session"] = True
+
+        # macOS 在某些 Python 版本上 close_fds 会引发 OSError，使用 try/except 兜底
+        try:
+            popen_kwargs["close_fds"] = True
+            proc = subprocess.Popen(cmd, **popen_kwargs)
+        except (OSError, ValueError):
+            popen_kwargs.pop("close_fds", None)
+            proc = subprocess.Popen(cmd, **popen_kwargs)
+
+        log_f.close()
+
+        # 写入 PID 文件
+        with open(pidfile, "w") as f:
+            f.write(str(proc.pid))
+
+        # 等待服务启动
+        time.sleep(1.5)
+
+        # 检查进程是否仍在运行
+        if _pid_alive(proc.pid):
+            print(f"服务已后台启动 (PID {proc.pid}) [{platform.system()} {platform.release()}]")
+            print(f"日志: {os.path.abspath(logfile)}")
+            print(f"PID 文件: {os.path.abspath(pidfile)}")
+            print(f"停止: python main.py --stop")
+        else:
+            print("服务启动失败，请检查日志:")
+            print(f"  {os.path.abspath(logfile)}")
+            try:
+                os.remove(pidfile)
+            except FileNotFoundError:
+                pass
+            sys.exit(1)
+    elif args.stop:
+        pidfile = args.pidfile
+
+        if not os.path.exists(pidfile):
+            print("服务未运行（PID 文件不存在）")
+            sys.exit(0)
+
+        try:
+            with open(pidfile, "r") as f:
+                pid = int(f.read().strip())
+        except (ValueError, OSError) as e:
+            print(f"PID 文件无效: {e}")
+            try:
+                os.remove(pidfile)
+            except FileNotFoundError:
+                pass
+            sys.exit(1)
+
+        if _terminate_process(pid, graceful=True):
+            print(f"服务已停止 (PID {pid})")
+        else:
+            print(f"进程 {pid} 不存在或无法终止，清理 PID 文件")
+
+        try:
+            os.remove(pidfile)
+        except FileNotFoundError:
+            pass
+    elif args.status:
+        pidfile = args.pidfile
+
+        if not os.path.exists(pidfile):
+            print("服务未运行")
+            sys.exit(0)
+
+        try:
+            with open(pidfile, "r") as f:
+                pid = int(f.read().strip())
+        except (ValueError, OSError):
+            print("PID 文件无效")
+            sys.exit(1)
+
+        if _pid_alive(pid):
+            print(f"服务运行中 (PID {pid}) [{platform.system()}]")
+            sys.exit(0)
+        else:
+            print("服务未运行（PID 文件存在但进程已退出）")
+            try:
+                os.remove(pidfile)
+            except FileNotFoundError:
+                pass
+            sys.exit(1)
+    else:
+        uvicorn.run(app, host=args.host, port=args.port)

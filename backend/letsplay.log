@@ -18604,3 +18604,7 @@ INFO:     127.0.0.1:50484 - "GET /manifest.json HTTP/1.1" 200 OK
 INFO:     127.0.0.1:50486 - "GET /apple-touch-icon-watch.png HTTP/1.1" 200 OK
 INFO:     125.123.157.188:0 - "GET /api/battles HTTP/1.1" 200 OK
 INFO:     125.123.157.188:0 - "GET /api/battles HTTP/1.1" 200 OK
+INFO:     125.123.157.188:0 - "OPTIONS /api/battles HTTP/1.1" 200 OK
+INFO:     125.123.157.188:0 - "GET /api/battles HTTP/1.1" 200 OK
+INFO:     125.123.157.188:0 - "GET /api/battles HTTP/1.1" 200 OK
+INFO:     125.123.157.188:0 - "GET /api/battles HTTP/1.1" 200 OK

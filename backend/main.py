@@ -252,6 +252,21 @@ def score(mid: str, body: ScoreBody):
     if match.get("battle_id"):
         store.check_finish_battle(match["battle_id"])
     match["court"] = court_info(match)
+    _with_team_players(match)
+    return match
+
+
+def _with_team_players(match: dict) -> dict:
+    """为 match 的 team_a / team_b 补充玩家信息（昵称、头像）。"""
+    bid = match.get("battle_id")
+    if bid:
+        players = store.get_players(bid)
+        pmap = {p["id"]: p for p in players}
+        match["team_a_players"] = [pmap.get(u, {"id": u, "nickname": u, "avatar": "?"}) for u in match.get("team_a", [])]
+        match["team_b_players"] = [pmap.get(u, {"id": u, "nickname": u, "avatar": "?"}) for u in match.get("team_b", [])]
+    else:
+        match["team_a_players"] = []
+        match["team_b_players"] = []
     return match
 
 
@@ -261,6 +276,7 @@ def get_match(mid: str):
     if not match:
         raise HTTPException(404, "对战不存在")
     match["court"] = court_info(match)
+    _with_team_players(match)
     return match
 
 
@@ -365,6 +381,30 @@ def matches_page():
 @app.get("/watch.html")
 def watch_page():
     return FileResponse(os.path.join(ROOT_DIR, "watch.html"))
+
+
+# PWA 图标与清单文件
+@app.get("/manifest.json")
+def manifest():
+    return FileResponse(os.path.join(ROOT_DIR, "manifest.json"), media_type="application/json")
+
+
+_STATIC_ICONS = {
+    "favicon.png": "image/png",
+    "apple-touch-icon.png": "image/png",
+    "apple-touch-icon-watch.png": "image/png",
+    "icon-192.png": "image/png",
+    "icon-512.png": "image/png",
+}
+
+
+@app.get("/{filename}")
+def static_icon(filename: str):
+    if filename in _STATIC_ICONS:
+        path = os.path.join(ROOT_DIR, filename)
+        if os.path.exists(path):
+            return FileResponse(path, media_type=_STATIC_ICONS[filename])
+    raise HTTPException(404, "Not Found")
 
 
 if __name__ == "__main__":

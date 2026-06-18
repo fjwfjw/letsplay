@@ -390,6 +390,7 @@ def manifest():
 
 
 _STATIC_ICONS = {
+    "favicon.ico": "image/x-icon",
     "favicon.png": "image/png",
     "apple-touch-icon.png": "image/png",
     "apple-touch-icon-watch.png": "image/png",

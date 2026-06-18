@@ -1,7 +1,7 @@
 // LETSLAY · 对战列表 + 记分覆盖层（含上滑退出）
 
 const BID = param('id');
-if (!BID) location.href = '/';
+if (!BID) location.href = 'index.html';
 
 let pollTimer = null;
 let playersMap = {};   // uid -> player
@@ -129,7 +129,7 @@ function renderRanking(ranking) {
 }
 
 // 返回首页
-$('#homeBtn').addEventListener('click', () => { location.href = '/'; });
+$('#homeBtn').addEventListener('click', () => { location.href = 'index.html'; });
 
 // ---------- 记分覆盖层 ----------
 const overlay = $('#overlay');
@@ -267,32 +267,44 @@ function closeScoring() {
 $('#ovClose').addEventListener('click', closeScoring);
 dimmer.addEventListener('click', closeScoring);
 
-// 识别手表端：小屏幕 + 高设备像素比 + UA
+// 识别手表端：仅识别真正的可穿戴设备（手表），手机/平板一律 false
 function isWatchClient() {
   const shortSide = Math.min(window.innerWidth, window.innerHeight);
-  const ratio = window.devicePixelRatio || 1;
   const ua = (navigator.userAgent || '').toLowerCase();
-  const watchUA = ua.includes('watch') || ua.includes('wearable') ||
-                  /android.*\bw\b/.test(ua) || ua.includes('watchos') || ua.includes('watchkit');
-  return shortSide <= 350 || (shortSide <= 400 && ratio >= 2) || watchUA;
+  // 1. UA 严格匹配 watchOS / watchKit / Android Wear / Galaxy Watch / Wear OS
+  if (
+    ua.includes('apple watch') ||
+    ua.includes('watchos') ||
+    ua.includes('watchkit') ||
+    ua.includes('wear os') ||
+    ua.includes('android wear') ||
+    /galaxy watch/.test(ua) ||
+    /sm-r\d{3}/.test(ua)
+  ) return true;
+  // 2. 屏幕短边 <= 220px（覆盖所有 Apple Watch：41mm=176, 45mm=198, Ultra=205；手机最低 320）
+  if (shortSide <= 220) return true;
+  // 3. 触摸点数兜底：Apple Watch / 小米手表 等穿戴设备 maxTouchPoints=1；手机/平板 = 5
+  if (navigator.maxTouchPoints === 1 && shortSide <= 320) return true;
+  return false;
 }
 
-// Watch 记分分享：手表端直接跳转，其他端复制
-$('#watchBtn').addEventListener('click', async () => {
+// Watch 记分按钮：点击直接跳转到 watch.html 记分页（不区分设备类型）
+const watchBtn = $('#watchBtn');
+const goWatch = () => {
   if (!currentMatch) return;
-  const url = `${location.origin}/watch.html?m=${currentMatch.id}`;
-  if (isWatchClient()) {
-    location.href = url;
-    return;
-  }
-  try {
-    await navigator.clipboard.writeText(url);
-    toast('Watch 记分链接已复制，在 Apple Watch 浏览器打开');
-  } catch {
-    // 兜底：直接在新标签打开
-    window.open(url, '_blank');
-  }
-});
+  const url = `watch.html?m=${currentMatch.id}`;
+  try { window.location.assign(url); }
+  catch (e) { window.location.href = url; }
+  // 兜底：1.5s 后仍未跳转则强制刷新
+  setTimeout(() => {
+    if (location.pathname.indexOf('watch.html') === -1) {
+      window.location.replace(url);
+    }
+  }, 1500);
+};
+watchBtn.addEventListener('click', goWatch);
+// 兜底：click 不响应时用 touchend
+watchBtn.addEventListener('touchend', (e) => { e.preventDefault(); goWatch(); }, { passive: false });
 
 // ESC 退出
 document.addEventListener('keydown', (e) => {

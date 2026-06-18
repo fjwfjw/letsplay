@@ -1,8 +1,13 @@
 // LETSPLAY · 前端 API 客户端 + 通用工具
 
+// GitHub Pages 部署时 API 指向后端服务器；本地开发时用相对路径
+const API_BASE = location.hostname.includes('github.io')
+  ? 'https://pve.u2170167.nyat.app:46355'
+  : '';
+
 const API = {
   async _fetch(path, opts = {}) {
-    const res = await fetch(path, {
+    const res = await fetch(API_BASE + path, {
       headers: { 'Content-Type': 'application/json' },
       ...opts,
     });

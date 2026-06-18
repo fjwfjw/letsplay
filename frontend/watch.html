@@ -17,13 +17,18 @@
     overscroll-behavior: none;
     -webkit-overflow-scrolling: none;
     background: #000;
-    touch-action: manipulation;
+    touch-action: none;
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
     font-family: -apple-system, "SF Pro Display", "Helvetica Neue", "PingFang SC", sans-serif;
     position: fixed;
     inset: 0;
+    /* iOS PWA / 添加到主屏后的安全区域：状态栏/灵动岛让位 */
+    padding-top: constant(safe-area-inset-top);
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: constant(safe-area-inset-bottom);
+    padding-bottom: env(safe-area-inset-bottom);
   }
   body { transform: translateZ(0); }
 
@@ -66,7 +71,7 @@
     cursor: pointer;
     position: relative;
     overflow: hidden;
-    touch-action: manipulation;
+    touch-action: none;
     -webkit-tap-highlight-color: transparent;
   }
   .blue { background-color: #007AFF; }
@@ -289,7 +294,8 @@
   /* 上滑退出把手 */
   .swipe-up-bar {
     position: fixed;
-    bottom: 4px;
+    /* iOS Home Indicator 让位 */
+    bottom: calc(4px + env(safe-area-inset-bottom, 0px));
     left: 50%;
     transform: translateX(-50%);
     display: flex;
@@ -384,9 +390,9 @@ document.addEventListener('touchmove', e => e.preventDefault(), { passive: false
 ['gesturestart', 'gesturechange', 'gestureend', 'dblclick'].forEach(evt => {
   document.addEventListener(evt, e => e.preventDefault(), { passive: false });
 });
-// watchOS / iOS Safari 双击放大：禁用 viewport 缩放（部分版本仅通过 user-scalable=no 仍不生效，需再禁一次）
+// watchOS / iOS Safari 双击放大：全局 touchstart 阻止默认行为（touchend 同理），彻底取消双击缩放
 document.addEventListener('touchstart', e => {
-  if (e.touches.length > 1) e.preventDefault();  // 多指
+  e.preventDefault();
 }, { passive: false });
 
 const MID = new URLSearchParams(location.search).get('m');
@@ -404,8 +410,13 @@ const redRingFg  = redRing.querySelector('.ring-fg');
 
 let match = null;
 
+// GitHub Pages 部署时 API 指向后端服务器；本地开发时用相对路径
+const API_BASE = location.hostname.includes('github.io')
+  ? 'https://pve.u2170167.nyat.app:46355'
+  : '';
+
 async function apiScore(action) {
-  const res = await fetch(`/api/match/${MID}/score`, {
+  const res = await fetch(`${API_BASE}/api/match/${MID}/score`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action }),
@@ -414,7 +425,7 @@ async function apiScore(action) {
   return res.json();
 }
 async function apiGet() {
-  const res = await fetch(`/api/match/${MID}`);
+  const res = await fetch(`${API_BASE}/api/match/${MID}`);
   if (!res.ok) throw new Error('对战不存在');
   return res.json();
 }
@@ -583,50 +594,78 @@ async function doUndo() {
 }
 
 // ---------- 交互：点击得分 + 长按撤销 ----------
+// 在 Apple Watch / iOS 上 pointer 事件无法阻止系统双击放大，改用 touch 事件并在
+// touchstart / touchend 里 e.preventDefault() 彻底取消默认行为。
 function bindBlock(block, side, ring, ringFg) {
   let timer = null;
   let ringTimer = null;
   let longPressed = false;
+  let cancelled = false;  // 任何形式的取消（长按达成 / 超阈值移动 / 系统中断）都置 true，touchend 不再 +1
   let startTime = 0;
   let startX = 0, startY = 0;
+  let activeTouchId = null;
 
-  block.addEventListener('pointerdown', (e) => {
-    e.preventDefault();  // 阻止 watchOS / iOS 系统级双击放大判定
+  function getTouch(e) {
+    if (activeTouchId == null) return null;
+    for (const t of e.changedTouches) {
+      if (t.identifier === activeTouchId) return t;
+    }
+    return null;
+  }
+
+  block.addEventListener('touchstart', (e) => {
+    if (activeTouchId != null) return;  // 只处理第一根手指（第二根忽略）
+    e.preventDefault();
+    const t = e.changedTouches[0];
+    activeTouchId = t.identifier;
     longPressed = false;
+    cancelled = false;
     startTime = Date.now();
-    startX = e.clientX;
-    startY = e.clientY;
-    block.setPointerCapture(e.pointerId);
+    startX = t.clientX;
+    startY = t.clientY;
     ringTimer = setTimeout(() => {
       ring.classList.add('active');
     }, 250);
     timer = setTimeout(() => {
       longPressed = true;
+      cancelled = true;  // 长按撤销达成，touchend 不再 +1
       ring.classList.remove('active');
       ringFg.style.strokeDashoffset = RING_C;
       doUndo();
       if (navigator.vibrate) navigator.vibrate(30);
     }, LONG_PRESS_MS);
     animateRing(ringFg);
-  });
+  }, { passive: false });
 
-  block.addEventListener('pointermove', (e) => {
-    // 手表端手指抖动容差放宽到 25px
-    if (Math.abs(e.clientX - startX) > 25 || Math.abs(e.clientY - startY) > 25) cancel();
-  });
+  block.addEventListener('touchmove', (e) => {
+    const t = getTouch(e);
+    if (!t) return;
+    if (Math.abs(t.clientX - startX) > 25 || Math.abs(t.clientY - startY) > 25) cancel();
+  }, { passive: false });
 
-  block.addEventListener('pointerup', (e) => {
+  block.addEventListener('touchend', (e) => {
+    const t = getTouch(e);
+    if (!t) return;
+    e.preventDefault();
+    // 先判定是否要 +1，再 cancel（cancel 会把 cancelled 置 true，否则永远不触发 doScore）
+    const shouldScore = !cancelled && !longPressed && Date.now() - startTime < LONG_PRESS_MS;
     cancel();
-    if (!longPressed && Date.now() - startTime < LONG_PRESS_MS) {
+    if (shouldScore) {
       doScore(side);
       if (navigator.vibrate) navigator.vibrate(10);
     }
+    activeTouchId = null;
+  }, { passive: false });
+
+  block.addEventListener('touchcancel', (e) => {
+    if (getTouch(e)) {
+      cancel();
+      activeTouchId = null;
+    }
   });
 
-  // pointerleave 不再 cancel（已用 setPointerCapture 锁住指针到 block 范围；手表端手稍偏出块就废掉不合理）
-  block.addEventListener('pointercancel', cancel);
-
   function cancel() {
+    cancelled = true;  // 任何 cancel 都置 true，touchend 不会 +1
     if (timer) { clearTimeout(timer); timer = null; }
     if (ringTimer) { clearTimeout(ringTimer); ringTimer = null; }
     ring.classList.remove('active');
@@ -652,27 +691,41 @@ bindBlock(redEl, 'b', redRing, redRingFg);
 const swipeBar = document.getElementById('swipeUpBar');
 let swipeDrag = null;
 const SWIPE_THRESHOLD = 80;
+let swipeTouchId = null;
 
-swipeBar.addEventListener('pointerdown', (e) => {
+function getSwipeTouch(e) {
+  if (swipeTouchId == null) return null;
+  for (const t of e.changedTouches) {
+    if (t.identifier === swipeTouchId) return t;
+  }
+  return null;
+}
+
+swipeBar.addEventListener('touchstart', (e) => {
+  if (swipeTouchId != null) return;
   e.preventDefault();
   e.stopPropagation();
-  swipeDrag = { startY: e.clientY };
-  swipeBar.setPointerCapture(e.pointerId);
+  const t = e.changedTouches[0];
+  swipeTouchId = t.identifier;
+  swipeDrag = { startY: t.clientY };
   document.body.style.transition = 'none';
-});
+}, { passive: false });
 
-swipeBar.addEventListener('pointermove', (e) => {
-  if (!swipeDrag) return;
-  const dy = e.clientY - swipeDrag.startY;
+swipeBar.addEventListener('touchmove', (e) => {
+  const t = getSwipeTouch(e);
+  if (!t || !swipeDrag) return;
+  const dy = t.clientY - swipeDrag.startY;
   if (dy < 0) {
     document.body.classList.add('swiping');
     document.body.style.transform = `translateY(${dy}px)`;
   }
-});
+}, { passive: false });
 
-swipeBar.addEventListener('pointerup', (e) => {
-  if (!swipeDrag) return;
-  const dy = e.clientY - swipeDrag.startY;
+swipeBar.addEventListener('touchend', (e) => {
+  const t = getSwipeTouch(e);
+  if (!t || !swipeDrag) return;
+  e.preventDefault();
+  const dy = t.clientY - swipeDrag.startY;
   document.body.classList.remove('swiping');
   if (dy < -SWIPE_THRESHOLD) {
     document.body.style.transition = 'transform 0.35s cubic-bezier(0.4, 0, 1, 1)';
@@ -684,15 +737,17 @@ swipeBar.addEventListener('pointerup', (e) => {
     setTimeout(() => { document.body.style.transition = ''; }, 260);
   }
   swipeDrag = null;
-});
+  swipeTouchId = null;
+}, { passive: false });
 
-swipeBar.addEventListener('pointercancel', () => {
-  if (swipeDrag) {
+swipeBar.addEventListener('touchcancel', (e) => {
+  if (getSwipeTouch(e) && swipeDrag) {
     document.body.classList.remove('swiping');
     document.body.style.transition = 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)';
     document.body.style.transform = '';
     setTimeout(() => { document.body.style.transition = ''; }, 260);
     swipeDrag = null;
+    swipeTouchId = null;
   }
 });
 

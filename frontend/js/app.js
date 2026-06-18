@@ -113,8 +113,9 @@ function showShareStep(bid) {
   sp.classList.remove('hidden');
   sp.classList.add('fade-in');
 
-  // 分享链接
-  const url = `${location.origin}/battle.html?id=${bid}`;
+  // 分享链接（完整 URL，用于复制发给朋友）
+  const base = location.href.replace(/[^/]*$/, '');
+  const url = `${base}battle.html?id=${bid}`;
   $('#shareLink').textContent = url;
 
   // 复制按钮
@@ -137,7 +138,7 @@ function showShareStep(bid) {
   $('#copyBtn2').onclick = doCopy;
 
   $('#enterLobbyBtn').onclick = () => {
-    location.href = `/battle.html?id=${bid}`;
+    location.href = `battle.html?id=${bid}`;
   };
 }
 
@@ -205,15 +206,10 @@ async function loadRooms() {
     // 绑定事件
     $$('.room-card', drawerList).forEach(card => {
       const bid = card.dataset.id;
-      const joined = card.dataset.joined === '1';
       const live = card.dataset.live === '1';
-      const canEnter = joined || (live && !card.dataset.waiting);
       card.addEventListener('click', () => {
-        if (canEnter) {
-          location.href = `/battle.html?id=${bid}`;
-        } else {
-          toast('只有对战的玩家才能加入');
-        }
+        // 进行中 → 记分列表页；等待中 → 对战大厅
+        location.href = live ? `matches.html?id=${bid}` : `battle.html?id=${bid}`;
       });
     });
   } catch (e) {
@@ -224,25 +220,23 @@ async function loadRooms() {
 function roomCardHTML(b) {
   const isLive = b.status === 'ongoing';
   const isWaiting = b.status === 'waiting';
-  const canEnter = b.joined || isLive; // 已加入任意阶段可进；进行中旁观
+  const isCreator = b.creator_id === currentUser.id;
   const typeLabel = b.type === 'singles' ? '单打' : '双打';
   const bestOfLabel = b.best_of === 1 ? '一局' : '三局两胜';
-  const tag = b.joined
-    ? '<span class="room-tag joined">已加入</span>'
-    : (isLive
-        ? '<span class="room-tag live">进行中</span>'
-        : '<span class="room-tag waiting">等待中</span>');
+  const tag = isCreator
+    ? '<span class="room-tag joined">我创建的</span>'
+    : '<span class="room-tag joined">已加入</span>';
 
   const avatars = (b.players || []).slice(0, 5).map(p => `
     <div class="mini-ava" title="${p.nickname}">${avatarHTML(p.avatar)}</div>
   `).join('');
   const more = (b.players && b.players.length > 5)
     ? `<span class="mini-name">+${b.players.length - 5}</span>` : '';
-  const cta = canEnter ? (b.joined ? '进入对战大厅' : '进入旁观') : '等待创建者开赛';
+  const cta = isLive ? '进入对战大厅' : '进入房间';
 
   return `
-    <div class="room-card ${b.joined ? 'joined' : ''} ${isLive ? 'live' : ''} ${isWaiting ? 'waiting' : ''} ${canEnter ? '' : 'disabled'}"
-         data-id="${b.id}" data-joined="${b.joined ? 1 : 0}" data-live="${isLive ? 1 : 0}" data-waiting="${isWaiting ? 1 : 0}">
+    <div class="room-card joined ${isLive ? 'live' : ''} ${isWaiting ? 'waiting' : ''}"
+         data-id="${b.id}" data-joined="1" data-live="${isLive ? 1 : 0}" data-waiting="${isWaiting ? 1 : 0}">
       <div class="room-row1">
         <span class="room-id">#${b.id}</span>
         ${tag}
@@ -282,7 +276,7 @@ drawer.addEventListener('transitionend', () => {
 setInterval(async () => {
   try {
     const res = await API.listBattles();
-    const my = (res.battles || []).filter(b => b.joined).length;
+    const my = (res.battles || []).length;
     roomsDot.hidden = my === 0;
   } catch {}
 }, 15000);

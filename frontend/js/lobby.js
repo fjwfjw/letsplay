@@ -2,18 +2,26 @@
 
 const BID = param('id');
 if (!BID) {
-  location.href = '/';
+  location.href = 'index.html';
 }
 
 // 识别手表端：小屏幕 + 高设备像素比 + 短边 <= 350px
 function isWatchClient() {
+  // 只判断真正的可穿戴设备（手表），手机/平板一律 false
   const shortSide = Math.min(window.innerWidth, window.innerHeight);
-  const ratio = window.devicePixelRatio || 1;
   const ua = (navigator.userAgent || '').toLowerCase();
-  const watchUA = ua.includes('watch') || ua.includes('wearable') || ua.includes('smart-tv') === false && (
-    /android.*\bw\b/.test(ua) || ua.includes('watchos') || ua.includes('watchkit')
-  );
-  return shortSide <= 350 || (shortSide <= 400 && ratio >= 2) || watchUA;
+  if (
+    ua.includes('apple watch') ||
+    ua.includes('watchos') ||
+    ua.includes('watchkit') ||
+    ua.includes('wear os') ||
+    ua.includes('android wear') ||
+    /galaxy watch/.test(ua) ||
+    /sm-r\d{3}/.test(ua)
+  ) return true;
+  if (shortSide <= 220) return true;
+  if (navigator.maxTouchPoints === 1 && shortSide <= 320) return true;
+  return false;
 }
 
 let pollTimer = null;
@@ -26,7 +34,7 @@ async function refresh() {
     // 已开赛 -> 跳转
     if (data.battle.status === 'ongoing') {
       clearInterval(pollTimer);
-      location.href = `/matches.html?id=${BID}`;
+      location.href = `matches.html?id=${BID}`;
       return;
     }
     // 新玩家加入提示（仅创建者）
@@ -85,22 +93,28 @@ function render(data) {
   // 分享区（仅创建者）
   if (is_creator) {
     $('#sharePanel').classList.remove('hidden');
-    const url = `${location.origin}/battle.html?id=${BID}`;
+    const url = `${location.href.replace(/[^/]*$/, '')}battle.html?id=${BID}`;
     $('#shareLink').textContent = url;
     $('#copyBtn').onclick = async () => {
       try { await navigator.clipboard.writeText(url); toast('邀请链接已复制'); }
       catch { toast('复制失败，请手动复制'); }
     };
-    // 手表按钮：手表端点击直接跳转，PC/手机端点复制
-    $('#watchBtn').onclick = async () => {
-      const watchUrl = `${location.origin}/watch.html?id=${BID}`;
-      if (isWatchClient()) {
-        location.href = watchUrl;
-        return;
-      }
-      try { await navigator.clipboard.writeText(watchUrl); toast('手表计分链接已复制'); }
-      catch { toast('复制失败，请手动复制'); }
+    // 手表按钮：点击直接跳转到 watch.html 记分页（不区分设备类型）
+    const watchBtn = $('#watchBtn');
+    const goWatch = () => {
+      const watchUrl = `watch.html?id=${BID}`;
+      try { window.location.assign(watchUrl); }
+      catch (e) { window.location.href = watchUrl; }
+      // 兜底：1.5s 后仍未跳转则强制刷新
+      setTimeout(() => {
+        if (!location.pathname.includes('watch.html')) {
+          window.location.replace(watchUrl);
+        }
+      }, 1500);
     };
+    watchBtn.onclick = goWatch;
+    // 兜底：click 不响应时用 touchend
+    watchBtn.addEventListener('touchend', (e) => { e.preventDefault(); goWatch(); }, { passive: false });
   }
 
   // 按钮区
@@ -143,7 +157,7 @@ $('#startBtn').addEventListener('click', async () => {
   try {
     await API.startBattle(BID);
     toast('对战开始！');
-    setTimeout(() => { location.href = `/matches.html?id=${BID}`; }, 400);
+    setTimeout(() => { location.href = `matches.html?id=${BID}`; }, 400);
   } catch (e) {
     toast(e.message, true);
     btn.disabled = false;

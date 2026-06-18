@@ -14,6 +14,9 @@ USER_TTL = 7 * 24 * 3600
 # 过期清理阈值：waiting 超过 N 秒 / ongoing 超过 M 秒自动 finished
 WAITING_EXPIRE = 4 * 3600
 ONGOING_EXPIRE = 8 * 3600
+# 建赛限流：单个 IP 在窗口期内最多创建 N 场对战
+CREATE_LIMIT_WINDOW = 8 * 3600   # 8 小时
+CREATE_LIMIT_MAX = 3             # 最多 3 场
 
 
 def get_redis(host="localhost", port=6379, db=0):
@@ -55,6 +58,22 @@ class Store:
         }
 
     # ---------- 对战 ----------
+    def check_create_limit(self, ip: str) -> bool:
+        """检查单个 IP 在 8h 窗口内是否可继续建赛（只读，不修改计数）。"""
+        key = f"ratelimit:create:{ip}"
+        now = int(time.time())
+        # 移除窗口外的过期记录
+        self.r.zremrangebyscore(key, 0, now - CREATE_LIMIT_WINDOW)
+        count = self.r.zcard(key)
+        return count < CREATE_LIMIT_MAX
+
+    def record_create(self, ip: str, bid: str):
+        """建赛成功后记录一条（用于限流计数）。"""
+        key = f"ratelimit:create:{ip}"
+        now = int(time.time())
+        self.r.zadd(key, {bid: now})
+        self.r.expire(key, CREATE_LIMIT_WINDOW)
+
     def create_battle(self, creator_uid: str, match_type: str, max_players: int, total_matches: int,
                       best_of: int = 3, game_point: int = 21) -> dict:
         bid = uuid.uuid4().hex[:8]
@@ -249,7 +268,7 @@ class Store:
         return stats
 
     def list_active_battles(self, uid: str = None) -> list:
-        """扫描所有未结束的对战，可选判断 uid 是否为玩家。
+        """扫描所有未结束的对战，只返回当前用户创建的或已加入的房间。
 
         返回按创建时间倒序排列的列表，每项含 battle 基础字段、玩家数、玩家列表、
         以及当前用户是否已加入该对战 (joined)。
@@ -257,7 +276,6 @@ class Store:
         out = []
         for key in self.r.scan_iter(match="battle:*", count=200):
             key = key.decode() if isinstance(key, bytes) else key
-            # 仅取 battle hash 本身，跳过 battle:*:players / battle:*:matches
             if key.endswith(":players") or key.endswith(":matches"):
                 continue
             bid = key.split(":", 1)[1]
@@ -265,6 +283,12 @@ class Store:
             if not battle or battle["status"] == "finished":
                 continue
             players = self.get_players(bid)
+            player_ids = [p["id"] for p in players]
+            is_creator = uid == battle["creator_id"]
+            is_joined = uid in player_ids if uid else False
+            # 只显示自己创建的或已加入的对战
+            if not is_creator and not is_joined:
+                continue
             out.append({
                 "id": bid,
                 "type": battle["type"],
@@ -277,7 +301,7 @@ class Store:
                 "created_at": int(battle["created_at"]),
                 "players_count": len(players),
                 "players": players,
-                "joined": uid in [p["id"] for p in players] if uid else False,
+                "joined": is_joined,
             })
         out.sort(key=lambda x: x["created_at"], reverse=True)
         return out

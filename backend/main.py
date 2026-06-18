@@ -18,6 +18,13 @@ from redis_store import Store
 from scoring import apply_point, undo, reset, court_info
 
 log = logging.getLogger("letsplay")
+# 让 startup/shutdown 里的 log.info 能被写入 letsplay.log（sweeper 启动 / 完成清理）
+if not log.handlers:
+    log.setLevel(logging.INFO)
+    _fh = logging.FileHandler("letsplay.log", encoding="utf-8")
+    _fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+    log.addHandler(_fh)
+    log.propagate = False  # 直接写文件，避免与 uvicorn 默认 handler 重复
 
 app = FastAPI(title="LetsPlay 对战记分")
 
@@ -77,6 +84,20 @@ def admin_sweep():
     return store.sweep_expired_battles()
 
 
+@app.get("/api/admin/sweeper")
+def admin_sweeper_status():
+    """返回后台 sweeper task 状态。"""
+    t = getattr(app.state, "sweeper", None)
+    if t is None:
+        return {"exists": False}
+    return {
+        "exists": True,
+        "done": t.done(),
+        "cancelled": t.cancelled(),
+        "interval": SWEEP_INTERVAL,
+    }
+
+
 def client_ip(req: Request) -> str:
     """取真实客户端 IP（支持反代）。"""
     fwd = req.headers.get("x-forwarded-for")
@@ -131,8 +152,13 @@ def create_battle(body: CreateBody, req: Request):
     if body.game_point not in (15, 21):
         raise HTTPException(400, "比分制只能为 15 或 21")
     user = me(req)
+    ip = client_ip(req)
+    # 限流：单个 IP 8 小时内最多 3 场对战
+    if not store.check_create_limit(ip):
+        raise HTTPException(429, "8 小时内创建对战次数已达上限（3 场），请稍后再试")
     battle = store.create_battle(user["id"], body.type, body.max_players, body.total_matches,
                                  body.best_of, body.game_point)
+    store.record_create(ip, battle["id"])
     return {"battle": battle, "user": user, "players": store.get_players(battle["id"])}
 
 

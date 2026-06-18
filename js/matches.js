@@ -312,5 +312,12 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ---------- 启动 ----------
+// 左上角 logo 点击返回首页
+const _brand = $('.brand');
+if (_brand) {
+  _brand.style.cursor = 'pointer';
+  _brand.addEventListener('click', () => { location.href = 'index.html'; });
+}
+
 loadMatches();
 pollTimer = setInterval(loadMatches, 5000);

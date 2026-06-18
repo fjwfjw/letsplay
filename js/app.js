@@ -143,7 +143,13 @@ function showShareStep(bid) {
 }
 
 // 初始化用户身份
-renderUserChip();
+let currentUser = null;
+renderUserChip().then(u => { currentUser = u; });
+
+// 左上角 logo 点击返回首页
+const brand = $('.brand');
+if (brand) brand.style.cursor = 'pointer';
+if (brand) brand.addEventListener('click', () => { location.href = 'index.html'; });
 
 // ---------- 房间抽屉 ----------
 const roomsBtn = $('#roomsBtn');
@@ -190,6 +196,7 @@ async function loadRooms() {
   try {
     const res = await API.listBattles();
     const list = res.battles || [];
+    if (res.user) currentUser = res.user;
     roomsLoaded = true;
     // 同步顶部红点
     const myRooms = list.filter(b => b.joined);
@@ -220,7 +227,7 @@ async function loadRooms() {
 function roomCardHTML(b) {
   const isLive = b.status === 'ongoing';
   const isWaiting = b.status === 'waiting';
-  const isCreator = b.creator_id === currentUser.id;
+  const isCreator = b.creator_id === (currentUser && currentUser.id);
   const typeLabel = b.type === 'singles' ? '单打' : '双打';
   const bestOfLabel = b.best_of === 1 ? '一局' : '三局两胜';
   const tag = isCreator

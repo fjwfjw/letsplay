@@ -11,6 +11,9 @@ from matchmaker import generate_matches, fairness_report
 BATTLE_TTL = 24 * 3600
 FINISHED_TTL = 2 * 3600
 USER_TTL = 7 * 24 * 3600
+# 过期清理阈值：waiting 超过 N 秒 / ongoing 超过 M 秒自动 finished
+WAITING_EXPIRE = 4 * 3600
+ONGOING_EXPIRE = 8 * 3600
 
 
 def get_redis(host="localhost", port=6379, db=0):
@@ -207,6 +210,43 @@ class Store:
             self._refresh_battle_ttl(bid, FINISHED_TTL)
             return True
         return False
+
+    def sweep_expired_battles(self) -> dict:
+        """扫描所有 battle，waiting>4h 或 ongoing>8h 自动 finished。
+
+        复用 check_finish_battle 的 TTL 缩短逻辑，让过期房 2h 后被 Redis 清理。
+        返回本次扫描的统计：checked / finished / by_waiting / by_ongoing。
+        """
+        now = int(time.time())
+        stats = {"checked": 0, "finished": 0, "by_waiting": 0, "by_ongoing": 0}
+        for key in self.r.scan_iter(match="battle:*", count=200):
+            key = key.decode() if isinstance(key, bytes) else key
+            # 仅取 battle hash 本身
+            if key.endswith(":players") or key.endswith(":matches"):
+                continue
+            bid = key.split(":", 1)[1]
+            battle = self.get_battle(bid)
+            if not battle or battle["status"] == "finished":
+                continue
+            stats["checked"] += 1
+            created_at = int(battle.get("created_at", now))
+            status = battle["status"]
+            should_finish = False
+            reason = None
+            if status == "waiting" and now - created_at >= WAITING_EXPIRE:
+                should_finish = True
+                reason = "by_waiting"
+            elif status == "ongoing" and now - created_at >= ONGOING_EXPIRE:
+                should_finish = True
+                reason = "by_ongoing"
+            if should_finish:
+                self.r.hset(f"battle:{bid}", "status", "finished")
+                self.r.hset(f"battle:{bid}", "finished_at", str(now))
+                self.r.hset(f"battle:{bid}", "finished_reason", reason)
+                self._refresh_battle_ttl(bid, FINISHED_TTL)
+                stats["finished"] += 1
+                stats[reason] += 1
+        return stats
 
     def list_active_battles(self, uid: str = None) -> list:
         """扫描所有未结束的对战，可选判断 uid 是否为玩家。

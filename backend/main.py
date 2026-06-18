@@ -5,6 +5,8 @@
 """
 import os
 import json
+import asyncio
+import logging
 import redis
 from fastapi import FastAPI, Request, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +16,8 @@ from pydantic import BaseModel
 
 from redis_store import Store
 from scoring import apply_point, undo, reset, court_info
+
+log = logging.getLogger("letsplay")
 
 app = FastAPI(title="LetsPlay 对战记分")
 
@@ -28,6 +32,49 @@ REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
 store = Store(r)
+
+
+# ---------- 后台过期清理 ----------
+SWEEP_INTERVAL = int(os.getenv("SWEEP_INTERVAL", "300"))  # 默认 5 分钟一次
+
+
+async def _sweeper_loop():
+    """定期扫描过期对战，waiting>4h / ongoing>8h 自动 finished。"""
+    while True:
+        try:
+            await asyncio.sleep(SWEEP_INTERVAL)
+            stats = store.sweep_expired_battles()
+            if stats["finished"]:
+                log.info(f"[sweep] finished={stats['finished']} (waiting={stats['by_waiting']}, ongoing={stats['by_ongoing']}) checked={stats['checked']}")
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            log.exception(f"[sweep] error: {e}")
+            # 失败也继续，下个周期再试
+            await asyncio.sleep(30)
+
+
+@app.on_event("startup")
+async def _start_sweeper():
+    app.state.sweeper = asyncio.create_task(_sweeper_loop())
+    log.info(f"[sweeper] started, interval={SWEEP_INTERVAL}s")
+
+
+@app.on_event("shutdown")
+async def _stop_sweeper():
+    task = app.state.sweeper
+    if task:
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
+
+
+# 手动触发清理（便于测试 / 紧急清理）
+@app.post("/api/admin/sweep")
+def admin_sweep():
+    return store.sweep_expired_battles()
 
 
 def client_ip(req: Request) -> str:

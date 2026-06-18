@@ -21,10 +21,18 @@ async function loadMatches() {
 
 function renderBoard(data) {
   const { battle, matches, fairness, players } = data;
-  // 顶栏
-  $('#userChip').innerHTML = players.length
-    ? `<div class="ava">${(playersMap[battle.creator_id] || players[0]).avatar}</div><span class="name">${(playersMap[battle.creator_id] || players[0]).nickname}</span>`
-    : '';
+  // 顶栏 - 显示当前用户（异步取自己的身份）
+  API.me().then(me => {
+    if (me && me.id) {
+      $('#userChip').innerHTML = `<div class="ava">${me.avatar}</div><span class="name">${me.nickname}</span>`;
+    } else if (players.length) {
+      $('#userChip').innerHTML = `<div class="ava">${players[0].avatar}</div><span class="name">${players[0].nickname}</span>`;
+    }
+  }).catch(() => {
+    if (players.length) {
+      $('#userChip').innerHTML = `<div class="ava">${players[0].avatar}</div><span class="name">${players[0].nickname}</span>`;
+    }
+  });
   $('#typeTag').textContent = battle.type === 'singles' ? '单打 1v1' : '双打 2v2';
   const bestOfLabel = battle.best_of === 1 ? '一局定胜负' : '三局两胜';
   $('#matchesTag').textContent = `${battle.total_matches} 场 · ${bestOfLabel} · ${battle.game_point}分制`;
@@ -259,10 +267,24 @@ function closeScoring() {
 $('#ovClose').addEventListener('click', closeScoring);
 dimmer.addEventListener('click', closeScoring);
 
-// Watch 记分分享：复制/打开 watch 链接
+// 识别手表端：小屏幕 + 高设备像素比 + UA
+function isWatchClient() {
+  const shortSide = Math.min(window.innerWidth, window.innerHeight);
+  const ratio = window.devicePixelRatio || 1;
+  const ua = (navigator.userAgent || '').toLowerCase();
+  const watchUA = ua.includes('watch') || ua.includes('wearable') ||
+                  /android.*\bw\b/.test(ua) || ua.includes('watchos') || ua.includes('watchkit');
+  return shortSide <= 350 || (shortSide <= 400 && ratio >= 2) || watchUA;
+}
+
+// Watch 记分分享：手表端直接跳转，其他端复制
 $('#watchBtn').addEventListener('click', async () => {
   if (!currentMatch) return;
   const url = `${location.origin}/watch.html?m=${currentMatch.id}`;
+  if (isWatchClient()) {
+    location.href = url;
+    return;
+  }
   try {
     await navigator.clipboard.writeText(url);
     toast('Watch 记分链接已复制，在 Apple Watch 浏览器打开');

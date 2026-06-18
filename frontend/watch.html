@@ -380,10 +380,14 @@
 // 阻止页面滚动（Apple Watch / iOS）
 document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
 
-// 禁用 iOS 双指捏合与双击缩放（快速点击页面会放大）
+// 禁用 iOS / watchOS 双指捏合与双击缩放
 ['gesturestart', 'gesturechange', 'gestureend', 'dblclick'].forEach(evt => {
   document.addEventListener(evt, e => e.preventDefault(), { passive: false });
 });
+// watchOS / iOS Safari 双击放大：禁用 viewport 缩放（部分版本仅通过 user-scalable=no 仍不生效，需再禁一次）
+document.addEventListener('touchstart', e => {
+  if (e.touches.length > 1) e.preventDefault();  // 多指
+}, { passive: false });
 
 const MID = new URLSearchParams(location.search).get('m');
 const RING_C = 2 * Math.PI * 52; // ~326.73
@@ -587,6 +591,7 @@ function bindBlock(block, side, ring, ringFg) {
   let startX = 0, startY = 0;
 
   block.addEventListener('pointerdown', (e) => {
+    e.preventDefault();  // 阻止 watchOS / iOS 系统级双击放大判定
     longPressed = false;
     startTime = Date.now();
     startX = e.clientX;
@@ -606,7 +611,8 @@ function bindBlock(block, side, ring, ringFg) {
   });
 
   block.addEventListener('pointermove', (e) => {
-    if (Math.abs(e.clientX - startX) > 10 || Math.abs(e.clientY - startY) > 10) cancel();
+    // 手表端手指抖动容差放宽到 25px
+    if (Math.abs(e.clientX - startX) > 25 || Math.abs(e.clientY - startY) > 25) cancel();
   });
 
   block.addEventListener('pointerup', (e) => {
@@ -617,8 +623,8 @@ function bindBlock(block, side, ring, ringFg) {
     }
   });
 
+  // pointerleave 不再 cancel（已用 setPointerCapture 锁住指针到 block 范围；手表端手稍偏出块就废掉不合理）
   block.addEventListener('pointercancel', cancel);
-  block.addEventListener('pointerleave', cancel);
 
   function cancel() {
     if (timer) { clearTimeout(timer); timer = null; }

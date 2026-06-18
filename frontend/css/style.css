@@ -83,16 +83,18 @@ input, select { font-family: inherit; }
 .shell {
   max-width: 1080px;
   margin: 0 auto;
-  padding: 28px 22px 80px;
+  padding: calc(28px + env(safe-area-inset-top)) 22px calc(80px + env(safe-area-inset-bottom));
 }
 
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding-top: env(safe-area-inset-top);
   padding-bottom: 24px;
   border-bottom: 1px solid var(--line);
   margin-bottom: 36px;
+  margin-top: calc(-1 * env(safe-area-inset-top));
 }
 .brand {
   display: flex;
@@ -1073,7 +1075,7 @@ input, select { font-family: inherit; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 20px;
+  padding: calc(18px + env(safe-area-inset-top)) 20px 18px;
   border-bottom: 1px solid var(--line);
   flex-shrink: 0;
 }

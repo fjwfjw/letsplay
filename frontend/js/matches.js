@@ -1,0 +1,282 @@
+// LETSLAY · 对战列表 + 记分覆盖层（含上滑退出）
+
+const BID = param('id');
+if (!BID) location.href = '/';
+
+let pollTimer = null;
+let playersMap = {};   // uid -> player
+let currentMatch = null; // 当前记分的 match
+
+// ---------- 列表加载 ----------
+async function loadMatches() {
+  try {
+    const data = await API.getMatches(BID);
+    playersMap = {};
+    data.players.forEach(p => { playersMap[p.id] = p; });
+    renderBoard(data);
+  } catch (e) {
+    $('#matchList').innerHTML = `<div class="empty"><div class="big">加载失败</div><div>${e.message}</div></div>`;
+  }
+}
+
+function renderBoard(data) {
+  const { battle, matches, fairness, players } = data;
+  // 顶栏
+  $('#userChip').innerHTML = players.length
+    ? `<div class="ava">${(playersMap[battle.creator_id] || players[0]).avatar}</div><span class="name">${(playersMap[battle.creator_id] || players[0]).nickname}</span>`
+    : '';
+  $('#typeTag').textContent = battle.type === 'singles' ? '单打 1v1' : '双打 2v2';
+  const bestOfLabel = battle.best_of === 1 ? '一局定胜负' : '三局两胜';
+  $('#matchesTag').textContent = `${battle.total_matches} 场 · ${bestOfLabel} · ${battle.game_point}分制`;
+  $('#statusText').textContent = battle.status === 'ongoing' ? '对战进行中' : '对战已结束';
+  const done = matches.filter(m => m.status === 'done').length;
+  $('#progressTag').textContent = `${done} / ${matches.length}`;
+  if (fairness && fairness.appearances) {
+    $('#fairnessTag').textContent = `出场均衡 · ${fairness.min}~${fairness.max} 场/人${fairness.balanced ? ' ✓' : ''}`;
+  }
+
+  const list = $('#matchList');
+  list.innerHTML = '';
+  if (!matches.length) {
+    list.innerHTML = `<div class="empty"><div class="big">暂无对战</div></div>`;
+    return;
+  }
+  matches.forEach((m, i) => {
+    const row = document.createElement('div');
+    row.className = 'match-row' + (m.status === 'live' ? ' live' : '') + (m.status === 'done' ? ' done' : '');
+    const teamA = m.team_a.map(uid => playersMap[uid]).filter(Boolean);
+    const teamB = m.team_b.map(uid => playersMap[uid]).filter(Boolean);
+    const aWin = m.status === 'done' && m.game_a > m.game_b;
+    const bWin = m.status === 'done' && m.game_b > m.game_a;
+
+    row.innerHTML = `
+      <div class="idx">${String(i + 1).padStart(2, '0')}</div>
+      <div class="teams">
+        <div class="team ${aWin ? 'win' : ''}">
+          ${teamA.map(p => `<div class="mini-ava">${p.avatar}</div>`).join('')}
+          <span class="pnames">${teamA.map(p => p.nickname).join(' / ') || '—'}</span>
+          <span class="pscore">${m.game_a}</span>
+        </div>
+        <span class="versus">VS</span>
+        <div class="team ${bWin ? 'win' : ''}">
+          ${teamB.map(p => `<div class="mini-ava">${p.avatar}</div>`).join('')}
+          <span class="pnames">${teamB.map(p => p.nickname).join(' / ') || '—'}</span>
+          <span class="pscore">${m.game_b}</span>
+        </div>
+      </div>
+      <button class="score-btn ${m.status === 'pending' ? 'go' : m.status === 'live' ? 'live' : 'done'}" data-mid="${m.id}">
+        ${m.status === 'pending' ? '记分' : m.status === 'live' ? '继续' : '查看'}
+      </button>
+    `;
+    list.appendChild(row);
+  });
+
+  // 绑定记分按钮
+  $$('.score-btn').forEach(btn => {
+    btn.addEventListener('click', () => openScoring(btn.dataset.mid));
+  });
+
+  // 全部比完 → 显示排名面板
+  const allDone = matches.length > 0 && matches.every(m => m.status === 'done');
+  if (allDone) {
+    loadRanking();
+  } else {
+    $('#rankingPanel').style.display = 'none';
+  }
+}
+
+// ---------- 排名 ----------
+async function loadRanking() {
+  try {
+    const data = await API.getRanking(BID);
+    renderRanking(data.ranking);
+  } catch (e) {
+    console.error('排名加载失败', e);
+  }
+}
+
+function renderRanking(ranking) {
+  if (!ranking || !ranking.length) return;
+  const panel = $('#rankingPanel');
+  panel.style.display = '';
+  $('#rankingTag').textContent = `${ranking.length} 人`;
+
+  const list = $('#rankingList');
+  list.innerHTML = '';
+  ranking.forEach(r => {
+    const row = document.createElement('div');
+    row.className = 'ranking-row';
+    const medal = r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : r.rank === 3 ? '🥉' : '';
+    row.innerHTML = `
+      <div class="rank-num">${medal || r.rank}</div>
+      <div class="rank-ava">${r.avatar}</div>
+      <div class="rank-info">
+        <div class="rank-name">${r.nickname}</div>
+        <div class="rank-detail">赢 ${r.matches_won} 场 · 胜 ${r.games_won} 局</div>
+      </div>
+      <div class="rank-score">${r.total_points}<span class="rank-unit">分</span></div>
+    `;
+    list.appendChild(row);
+  });
+}
+
+// 返回首页
+$('#homeBtn').addEventListener('click', () => { location.href = '/'; });
+
+// ---------- 记分覆盖层 ----------
+const overlay = $('#overlay');
+const dimmer = $('#dimmer');
+
+async function openScoring(mid) {
+  try {
+    currentMatch = await API.getMatch(mid);
+    fillScoring();
+    dimmer.classList.add('open');
+    overlay.classList.add('open');
+    overlay.classList.remove('closing');
+    // 启动记分轮询
+    startScorePoll();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+let scorePollTimer = null;
+function startScorePoll() {
+  stopScorePoll();
+  scorePollTimer = setInterval(async () => {
+    if (!currentMatch || !overlay.classList.contains('open')) {
+      stopScorePoll();
+      return;
+    }
+    try {
+      const fresh = await API.getMatch(currentMatch.id);
+      // 仅在分数变化时刷新（避免打断手势）
+      if (fresh.score_a !== currentMatch.score_a || fresh.score_b !== currentMatch.score_b ||
+          fresh.game_a !== currentMatch.game_a || fresh.game_b !== currentMatch.game_b ||
+          fresh.status !== currentMatch.status) {
+        currentMatch = fresh;
+        fillScoring();
+      }
+    } catch {}
+  }, 2500);
+}
+function stopScorePoll() {
+  if (scorePollTimer) { clearInterval(scorePollTimer); scorePollTimer = null; }
+}
+
+function fillScoring() {
+  const m = currentMatch;
+  const teamA = m.team_a.map(uid => playersMap[uid]).filter(Boolean);
+  const teamB = m.team_b.map(uid => playersMap[uid]).filter(Boolean);
+
+  $('#ovTitle').textContent = `第 ${m.index + 1} 场`;
+  const gameNum = m.game_a + m.game_b + 1;
+  const gp = m.game_point || 21;
+  const bestOfLabel = m.best_of === 1 ? '一局定胜负' : '三局两胜';
+  $('#ovGameTag').textContent = m.status === 'done'
+    ? `MATCH OVER · ${m.game_a} - ${m.game_b}`
+    : `GAME ${gameNum} · ${bestOfLabel} · FIRST TO ${gp}`;
+
+  $('#avaA').innerHTML = teamA.map(p => `<div class="ava">${p.avatar}</div>`).join('');
+  $('#avaB').innerHTML = teamB.map(p => `<div class="ava">${p.avatar}</div>`).join('');
+  $('#nameA').textContent = teamA.map(p => p.nickname).join(' / ') || 'A 队';
+  $('#nameB').textContent = teamB.map(p => p.nickname).join(' / ') || 'B 队';
+  $('#scoreA').textContent = m.score_a;
+  $('#scoreB').textContent = m.score_b;
+  $('#gameA').textContent = m.game_a;
+  $('#gameB').textContent = m.game_b;
+
+  // 发球指示
+  $('#sideA').classList.toggle('serving', m.server === 'a' && m.status !== 'done');
+  $('#sideB').classList.toggle('serving', m.server === 'b' && m.status !== 'done');
+  // 发球区位（偶数右区，奇数左区）
+  const courtA = m.score_a % 2 === 0 ? '右区' : '左区';
+  const courtB = m.score_b % 2 === 0 ? '右区' : '左区';
+  $('#courtA').textContent = courtA;
+  $('#courtB').textContent = courtB;
+
+  // 比赛结束遮罩
+  const done = m.status === 'done';
+  const winnerSide = m.game_a > m.game_b ? 'a' : 'b';
+  const winnerTeam = winnerSide === 'a' ? teamA : teamB;
+  $('#doneA').classList.toggle('show', done && winnerSide === 'a');
+  // B 队胜利时把遮罩挪到 B 侧
+  const doneB = $('#doneA');
+  if (done && winnerSide === 'b') {
+    $('#sideB').appendChild(doneB);
+  } else {
+    $('#sideA').appendChild(doneB);
+  }
+  if (done) {
+    $('#winnerName').textContent = winnerTeam.map(p => p.nickname).join(' / ');
+    $('#finalScore').textContent = `${m.game_a} : ${m.game_b}`;
+  }
+}
+
+// 点击加分
+$('#sideA').addEventListener('click', () => scoreAction('point_a'));
+$('#sideB').addEventListener('click', () => scoreAction('point_b'));
+
+async function scoreAction(action) {
+  if (!currentMatch) return;
+  if (currentMatch.status === 'done' && action !== 'undo' && action !== 'reset') {
+    toast('比赛已结束', true);
+    return;
+  }
+  try {
+    currentMatch = await API.score(currentMatch.id, action);
+    fillScoring();
+    if (action === 'point_a' || action === 'point_b') {
+      // 若该场结束，刷新列表
+      if (currentMatch.status === 'done') {
+        loadMatches();
+      }
+    }
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+$('#undoBtn').addEventListener('click', () => scoreAction('undo'));
+$('#resetBtn').addEventListener('click', () => {
+  if (confirm('确定重置本场比赛比分？')) scoreAction('reset');
+});
+
+// ---------- 上滑退出 ----------
+function closeScoring() {
+  stopScorePoll();
+  overlay.classList.remove('open');
+  overlay.classList.add('closing');
+  dimmer.classList.remove('open');
+  setTimeout(() => {
+    overlay.classList.remove('closing');
+    currentMatch = null;
+    loadMatches(); // 退出时刷新列表
+  }, 400);
+}
+
+$('#ovClose').addEventListener('click', closeScoring);
+dimmer.addEventListener('click', closeScoring);
+
+// Watch 记分分享：复制/打开 watch 链接
+$('#watchBtn').addEventListener('click', async () => {
+  if (!currentMatch) return;
+  const url = `${location.origin}/watch.html?m=${currentMatch.id}`;
+  try {
+    await navigator.clipboard.writeText(url);
+    toast('Watch 记分链接已复制，在 Apple Watch 浏览器打开');
+  } catch {
+    // 兜底：直接在新标签打开
+    window.open(url, '_blank');
+  }
+});
+
+// ESC 退出
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && overlay.classList.contains('open')) closeScoring();
+});
+
+// ---------- 启动 ----------
+loadMatches();
+pollTimer = setInterval(loadMatches, 5000);

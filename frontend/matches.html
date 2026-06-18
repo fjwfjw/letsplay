@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>对战列表 · LETSLAY</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark">LETSLAY</span>
+        <span class="sub">Match Board</span>
+      </div>
+      <div class="user-chip" id="userChip">
+        <div class="ava"><span class="loading"></span></div>
+        <span class="name">加载中</span>
+      </div>
+    </header>
+
+    <!-- 状态条 -->
+    <div class="status-bar">
+      <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+        <div>
+          <span class="live-dot"></span>
+          <span style="font-weight:600;letter-spacing:.5px;" id="statusText">对战进行中</span>
+        </div>
+        <div class="muted" id="typeTag" style="font-family:var(--font-mono);font-size:12px;letter-spacing:1px;text-transform:uppercase;"></div>
+        <div class="muted" id="matchesTag" style="font-family:var(--font-mono);font-size:12px;letter-spacing:1px;text-transform:uppercase;"></div>
+      </div>
+      <div id="fairnessTag" class="muted" style="font-family:var(--font-mono);font-size:11px;letter-spacing:1px;text-transform:uppercase;"></div>
+    </div>
+
+    <!-- 对战列表 -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>对战编排</h2>
+        <span class="tag" id="progressTag">0 / 0</span>
+      </div>
+      <div class="match-list" id="matchList">
+        <div class="empty"><div class="big">加载中…</div></div>
+      </div>
+    </section>
+
+    <!-- 排名面板（全部比完后显示） -->
+    <section class="panel" id="rankingPanel" style="display:none;">
+      <div class="panel-head">
+        <h2>总得分排名</h2>
+        <span class="tag" id="rankingTag">—</span>
+      </div>
+      <div id="rankingList"></div>
+      <div style="text-align:center;margin-top:20px;">
+        <button class="btn btn-primary" id="homeBtn" style="min-width:160px;">返回首页</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- 记分覆盖层 -->
+  <div class="score-dimmer" id="dimmer"></div>
+  <div class="score-overlay" id="overlay">
+    <div class="score-head">
+      <span class="title" id="ovTitle">第 1 场</span>
+      <span class="game-tag" id="ovGameTag">GAME 1 · FIRST TO 21</span>
+      <div style="display:flex;gap:8px;">
+        <button class="icon-btn" id="watchBtn" title="分享到 Apple Watch 记分">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="3" width="12" height="18" rx="4"/><path d="M9 7h6"/></svg>
+        </button>
+        <button class="icon-btn" id="ovClose" title="退出">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="scoreboard">
+      <div class="side a" id="sideA" data-side="a">
+        <div class="serve-ind"><span class="dot"></span> 发球</div>
+        <div class="color-tag">TEAM A</div>
+        <div class="avatars" id="avaA"></div>
+        <div class="team-name" id="nameA">—</div>
+        <div class="score-num" id="scoreA">0</div>
+        <div class="court-ind" id="courtA">右区</div>
+        <div class="tap-hint">点击加分</div>
+        <div class="match-done" id="doneA">
+          <div class="crown">★ WINNER ★</div>
+          <div class="winner" id="winnerName">—</div>
+          <div class="final" id="finalScore">—</div>
+        </div>
+      </div>
+      <div class="side b" id="sideB" data-side="b">
+        <div class="serve-ind"><span class="dot"></span> 发球</div>
+        <div class="color-tag">TEAM B</div>
+        <div class="avatars" id="avaB"></div>
+        <div class="team-name" id="nameB">—</div>
+        <div class="score-num" id="scoreB">0</div>
+        <div class="court-ind" id="courtB">右区</div>
+        <div class="tap-hint">点击加分</div>
+      </div>
+    </div>
+
+    <div class="score-foot">
+      <div class="games">
+        <span class="g">局数 A<b id="gameA">0</b></span>
+        <span class="g">局数 B<b id="gameB">0</b></span>
+      </div>
+      <div class="actions">
+        <button class="icon-btn" id="undoBtn" title="撤销">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 00-15-6.7L3 13"/></svg>
+        </button>
+        <button class="icon-btn" id="resetBtn" title="重置">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1015-6.7L21 9"/><path d="M21 3v6h-6"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/matches.js"></script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>对战大厅 · LETSLAY</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark">LETSLAY</span>
+        <span class="sub">Battle Lobby</span>
+      </div>
+      <div class="user-chip" id="userChip">
+        <div class="ava"><span class="loading"></span></div>
+        <span class="name">加载中</span>
+      </div>
+    </header>
+
+    <!-- 状态条 -->
+    <div class="status-bar" id="statusBar">
+      <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+        <div>
+          <span class="live-dot"></span>
+          <span id="statusText" style="font-weight:600;letter-spacing:.5px;">等待玩家加入</span>
+        </div>
+        <div class="count-pill">
+          <span class="big" id="pCount">0</span>
+          <span class="small">/<span id="pMax">0</span> 人</span>
+        </div>
+        <div class="muted" id="typeTag" style="font-family:var(--font-mono);font-size:12px;letter-spacing:1px;text-transform:uppercase;"></div>
+      </div>
+      <div class="muted" id="matchesTag" style="font-family:var(--font-mono);font-size:12px;letter-spacing:1px;text-transform:uppercase;"></div>
+    </div>
+
+    <!-- 分享区（仅创建者可见） -->
+    <section class="panel hidden" id="sharePanel">
+      <div class="panel-head">
+        <h2>邀请对战</h2>
+        <span class="tag">Share</span>
+      </div>
+      <p class="muted" style="margin-bottom:14px;">把链接发给朋友，他们打开即可加入这场对战。</p>
+      <div class="share-box">
+        <span class="link" id="shareLink">—</span>
+        <button class="copy" id="copyBtn">复制</button>
+      </div>
+    </section>
+
+    <!-- 玩家列表 -->
+    <section class="panel" style="margin-top:20px;">
+      <div class="panel-head">
+        <h2>参赛玩家</h2>
+        <span class="tag" id="pCountTag">0 / 0</span>
+      </div>
+      <div class="players stagger" id="playersList"></div>
+      <div class="empty hidden" id="emptyPlayers">
+        <div class="big">还没有玩家</div>
+        <div>等待加入…</div>
+      </div>
+    </section>
+
+    <!-- 操作按钮 -->
+    <div class="btn-row" id="actionRow" style="flex-direction:column;align-items:stretch;">
+      <!-- 未加入：显示加入按钮 -->
+      <button class="btn btn-primary btn-block hidden" id="joinBtn">加入对战</button>
+      <!-- 创建者：开始按钮 -->
+      <button class="btn btn-primary btn-block hidden" id="startBtn">开始对战 →</button>
+      <!-- 已加入等待 -->
+      <div class="center muted hidden" id="waitNote" style="padding:14px;font-size:13px;letter-spacing:1px;">
+        已加入，等待创建者开赛…
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/lobby.js"></script>
+</body>
+</html>

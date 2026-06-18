@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>LETSLAY · 在线对战记分</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <div class="shell">
+    <!-- 顶栏 -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark">LETSLAY</span>
+        <span class="sub">Live Match Scoring</span>
+      </div>
+      <div class="user-chip" id="userChip">
+        <div class="ava"><span class="loading"></span></div>
+        <span class="name">加载中</span>
+      </div>
+    </header>
+
+    <!-- 英雄 -->
+    <section class="hero">
+      <div class="orbit"></div>
+      <div class="kicker">Night Tournament · 2026</div>
+      <h1>
+        <span class="stroke">开一局</span><br />
+        <span class="accent">羽毛对战</span>
+      </h1>
+      <p class="lead">
+        创建对战、分享链接、随机组队、人人上场。基于 IP 自动生成你的专属身份，
+        21 分制实时记分，三局两胜，球场就在你掌心。
+      </p>
+    </section>
+
+    <!-- 步骤指示 -->
+    <div class="steps">
+      <div class="step active" id="step1">
+        <span class="num">1</span>
+        <span>配置对战</span>
+      </div>
+      <div class="step-line" id="line1"></div>
+      <div class="step" id="step2">
+        <span class="num">2</span>
+        <span>分享邀战</span>
+      </div>
+    </div>
+
+    <!-- 第一步：配置 -->
+    <section class="panel fade-in" id="configPanel">
+      <div class="panel-head">
+        <h2>对战配置</h2>
+        <span class="tag">Step 01</span>
+      </div>
+
+      <!-- 单/双打 -->
+      <div class="type-grid" id="typeGrid">
+        <div class="type-card selected" data-type="singles">
+          <div class="ico">1v1</div>
+          <div class="label">单打</div>
+          <div class="desc">一对一，纯粹的个人对决</div>
+          <div class="check">✓</div>
+        </div>
+        <div class="type-card" data-type="doubles">
+          <div class="ico">2v2</div>
+          <div class="label">双打</div>
+          <div class="desc">组队配合，队友轮换不停</div>
+          <div class="check">✓</div>
+        </div>
+      </div>
+
+      <!-- 人数 -->
+      <div class="field">
+        <div class="field-label">
+          <span class="name">参赛人数</span>
+          <span class="val" id="playersVal">4</span>
+        </div>
+        <div class="chip-row" id="playersChips"></div>
+      </div>
+
+      <!-- 场数 -->
+      <div class="field">
+        <div class="field-label">
+          <span class="name">对战场数</span>
+          <span class="val" id="matchesVal">6</span>
+        </div>
+        <div class="chip-row" id="matchesChips"></div>
+      </div>
+
+      <!-- 局制 -->
+      <div class="field">
+        <div class="field-label">
+          <span class="name">局制</span>
+          <span class="val" id="bestOfVal">三局两胜</span>
+        </div>
+        <div class="chip-row" id="bestOfChips"></div>
+      </div>
+
+      <!-- 比分制 -->
+      <div class="field">
+        <div class="field-label">
+          <span class="name">单局比分制</span>
+          <span class="val" id="gamePointVal">21 分</span>
+        </div>
+        <div class="chip-row" id="gamePointChips"></div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary btn-block" id="createBtn">创建对战 →</button>
+      </div>
+    </section>
+
+    <!-- 第二步：分享 -->
+    <section class="panel hidden" id="sharePanel">
+      <div class="panel-head">
+        <h2>分享你的对战</h2>
+        <span class="tag">Step 02</span>
+      </div>
+      <p class="muted" style="margin-bottom:14px;">
+        对战已就绪。把下方链接发给朋友，他们打开即可加入。你将作为创建者负责开赛。
+      </p>
+      <div class="share-box">
+        <span class="link" id="shareLink">—</span>
+        <button class="copy" id="copyBtn">复制</button>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="copyBtn2">复制邀请链接</button>
+        <button class="btn btn-primary" id="enterLobbyBtn">进入对战大厅 →</button>
+      </div>
+    </section>
+  </div>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

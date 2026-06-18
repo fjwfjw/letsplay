@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="记分">
+<title>记分 · LETSLAY</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%23007AFF'/%3E%3Cstop offset='100%25' style='stop-color:%23FF3B30'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='96' fill='url(%23bg)'/%3E%3Ctext x='256' y='340' font-family='Arial' font-size='280' font-weight='bold' fill='white' text-anchor='middle'%3E21%3C/text%3E%3C/svg%3E">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #000;
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    font-family: -apple-system, "SF Pro Display", "Helvetica Neue", "PingFang SC", sans-serif;
+  }
+
+  /* 加载/错误态 */
+  .screen {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: #000; color: #fff;
+    padding: 20px; text-align: center;
+  }
+  .screen .spinner {
+    width: 28px; height: 28px;
+    border: 2px solid rgba(255,255,255,0.2);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-bottom: 14px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .screen .msg { font-size: 13px; color: rgba(255,255,255,0.7); letter-spacing: 1px; }
+  .screen .big { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+
+  /* 记分板 */
+  .scoreboard {
+    display: none;
+    flex-direction: column;
+    width: 100%; height: 100%;
+  }
+  .scoreboard.ready { display: flex; }
+
+  .score-block {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: filter 0.15s;
+  }
+  .score-block:active { filter: brightness(0.85); }
+  .blue { background-color: #007AFF; }
+  .red  { background-color: #FF3B30; }
+
+  /* 队名 + 局数小条 */
+  .meta-bar {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.85);
+    letter-spacing: 0.5px;
+    text-align: center;
+    max-width: 90%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .meta-bar .game-pill {
+    background: rgba(0,0,0,0.25);
+    padding: 2px 6px;
+    border-radius: 100px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 发球指示 */
+  .serve-dot {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 8px rgba(255,255,255,0.9);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .blue .serve-dot { right: 14px; }
+  .red  .serve-dot { left: 14px; }
+  .serving .serve-dot { opacity: 1; animation: blink 1.2s ease-in-out infinite; }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  /* 分数 */
+  .score-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+  }
+  .score {
+    font-size: clamp(56px, 26vw, 96px);
+    font-weight: 700;
+    color: #fff;
+    line-height: 1;
+    text-shadow: 0 2px 16px rgba(0,0,0,0.3);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 得分弹跳 */
+  @keyframes scorePop {
+    0%   { transform: scale(1); }
+    25%  { transform: scale(1.35); }
+    50%  { transform: scale(0.92); }
+    75%  { transform: scale(1.08); }
+    100% { transform: scale(1); }
+  }
+  .score-pop { animation: scorePop 0.35s cubic-bezier(0.22, 1, 0.36, 1); }
+
+  /* 减分挤压 */
+  @keyframes scoreSqueeze {
+    0%   { transform: scale(1); }
+    20%  { transform: scaleX(0.6) scaleY(1.25); }
+    50%  { transform: scaleX(1.25) scaleY(0.85); }
+    100% { transform: scale(1); }
+  }
+  .score-squeeze { animation: scoreSqueeze 0.4s cubic-bezier(0.22, 1, 0.36, 1); }
+
+  /* 冲击波 */
+  @keyframes ripple {
+    0% { transform: scale(0); opacity: 0.5; }
+    100% { transform: scale(4); opacity: 0; }
+  }
+  .ripple {
+    position: absolute;
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.4);
+    pointer-events: none;
+    z-index: 1;
+    animation: ripple 0.5s ease-out forwards;
+  }
+
+  /* +1/-1 浮字 */
+  @keyframes floatUp {
+    0%   { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-40px) scale(1.3); }
+  }
+  .float-text {
+    position: absolute;
+    font-size: 22px;
+    font-weight: 800;
+    color: #fff;
+    pointer-events: none;
+    z-index: 3;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    animation: floatUp 0.6s ease-out forwards;
+  }
+
+  /* 长按进度环 */
+  .progress-ring {
+    position: absolute;
+    z-index: 2;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .progress-ring.active { opacity: 1; }
+  .progress-ring circle {
+    fill: none;
+    stroke-linecap: round;
+  }
+  .progress-ring .ring-bg { stroke: rgba(255,255,255,0.25); }
+  .progress-ring .ring-fg {
+    stroke: #fff;
+    transition: stroke-dashoffset 0.05s linear;
+    filter: drop-shadow(0 0 4px rgba(255,255,255,0.6));
+  }
+
+  /* 中央分割线：蓝红直接相接，无横条，仅作为比分胶囊的定位容器 */
+  .divider {
+    flex-shrink: 0;
+    height: 0;
+    position: relative;
+    z-index: 5;
+  }
+  .games-display {
+    position: absolute;
+    top: 50%; left: 70%;
+    transform: translate(-50%, -50%);
+    background: #000;
+    color: #fff;
+    padding: 5px 14px;
+    border-radius: 100px;
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    font-variant-numeric: tabular-nums;
+    border: 1px solid rgba(255,255,255,0.25);
+    white-space: nowrap;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+  }
+
+  /* 比赛结束遮罩 */
+  .match-over {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.92);
+    display: none;
+    flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 50;
+    color: #fff;
+    text-align: center;
+    padding: 20px;
+  }
+  .match-over.show { display: flex; animation: fadeIn 0.4s ease; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .match-over .crown {
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: #FFD60A;
+    margin-bottom: 10px;
+  }
+  .match-over .winner {
+    font-size: 22px;
+    font-weight: 800;
+    line-height: 1.1;
+    margin-bottom: 12px;
+  }
+  .match-over .final {
+    font-size: 16px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.7);
+    font-variant-numeric: tabular-nums;
+  }
+  .match-over .close-hint {
+    position: absolute;
+    bottom: 20px;
+    font-size: 10px;
+    color: rgba(255,255,255,0.4);
+    letter-spacing: 1px;
+  }
+
+  /* 底部小提示 */
+  .footer-hint {
+    position: absolute;
+    bottom: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 8px;
+    color: rgba(255,255,255,0.4);
+    letter-spacing: 1px;
+    pointer-events: none;
+    z-index: 4;
+  }
+  .red .footer-hint { display: none; }
+  .blue .footer-hint { top: 4px; bottom: auto; }
+
+  /* 上滑退出指示器（固定在屏幕底部，独立于色块，避免被 overflow:hidden 裁剪） */
+  .swipe-up-bar {
+    position: fixed;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    z-index: 30;
+    pointer-events: auto;
+    cursor: grab;
+    opacity: 0.55;
+    transition: opacity 0.2s;
+    touch-action: none;
+    padding: 8px 16px;
+  }
+  .swipe-up-bar:active { cursor: grabbing; }
+  .swipe-up-bar .handle {
+    width: 40px; height: 4px;
+    border-radius: 100px;
+    background: rgba(255,255,255,0.9);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  }
+  .swipe-up-bar .label {
+    font-size: 8px;
+    letter-spacing: 1.5px;
+    color: rgba(255,255,255,0.9);
+    text-transform: uppercase;
+    font-weight: 600;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+  }
+  .swiping .swipe-up-bar { opacity: 0.95; }
+</style>
+</head>
+<body>
+
+<!-- 加载/错误屏 -->
+<div class="screen" id="loadScreen">
+  <div class="spinner"></div>
+  <div class="msg">加载比赛…</div>
+</div>
+
+<!-- 记分板 -->
+<div class="scoreboard" id="scoreboard">
+  <div class="score-block blue" id="blue">
+    <div class="meta-bar">
+      <span id="blueName">—</span>
+      <span class="game-pill" id="blueGame">0</span>
+    </div>
+    <div class="serve-dot"></div>
+    <div class="score-wrapper">
+      <svg class="progress-ring" width="100" height="100" viewBox="0 0 100 100">
+        <circle class="ring-bg" cx="50" cy="50" r="44" stroke-width="5"/>
+        <circle class="ring-fg" cx="50" cy="50" r="44" stroke-width="5"
+          stroke-dasharray="276.46" stroke-dashoffset="276.46"
+          transform="rotate(-90 50 50)"/>
+      </svg>
+      <span class="score" id="blueScore">0</span>
+    </div>
+  </div>
+
+  <div class="divider">
+    <div class="games-display" id="gamesDisplay">0 : 0</div>
+  </div>
+
+  <div class="score-block red" id="red">
+    <div class="meta-bar">
+      <span class="game-pill" id="redGame">0</span>
+      <span id="redName">—</span>
+    </div>
+    <div class="serve-dot"></div>
+    <div class="score-wrapper">
+      <svg class="progress-ring" width="100" height="100" viewBox="0 0 100 100">
+        <circle class="ring-bg" cx="50" cy="50" r="44" stroke-width="5"/>
+        <circle class="ring-fg" cx="50" cy="50" r="44" stroke-width="5"
+          stroke-dasharray="276.46" stroke-dashoffset="276.46"
+          transform="rotate(-90 50 50)"/>
+      </svg>
+      <span class="score" id="redScore">0</span>
+    </div>
+  </div>
+</div>
+
+<!-- 上滑退出把手（独立于色块，固定在屏幕底部） -->
+<div class="swipe-up-bar" id="swipeUpBar">
+  <div class="handle"></div>
+  <div class="label">上滑退出</div>
+</div>
+
+<!-- 比赛结束 -->
+<div class="match-over" id="matchOver">
+  <div class="crown">★ WINNER ★</div>
+  <div class="winner" id="overWinner">—</div>
+  <div class="final" id="overFinal">—</div>
+  <div class="close-hint">点击任意位置关闭</div>
+</div>
+
+<script>
+const MID = new URLSearchParams(location.search).get('m');
+const RING_C = 2 * Math.PI * 44; // ~276.46
+const LONG_PRESS_MS = 1200;
+
+const blueEl = document.getElementById('blue');
+const redEl  = document.getElementById('red');
+const blueScoreEl = document.getElementById('blueScore');
+const redScoreEl  = document.getElementById('redScore');
+const blueRing = blueEl.querySelector('.progress-ring');
+const redRing  = redEl.querySelector('.progress-ring');
+const blueRingFg = blueRing.querySelector('.ring-fg');
+const redRingFg  = redRing.querySelector('.ring-fg');
+
+let match = null;
+
+async function apiScore(action) {
+  const res = await fetch(`/api/match/${MID}/score`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action }),
+  });
+  if (!res.ok) throw new Error('请求失败');
+  return res.json();
+}
+async function apiGet() {
+  const res = await fetch(`/api/match/${MID}`);
+  if (!res.ok) throw new Error('对战不存在');
+  return res.json();
+}
+
+async function init() {
+  if (!MID) {
+    showScreen('缺少比赛 ID', true);
+    return;
+  }
+  try {
+    match = await apiGet();
+    document.getElementById('loadScreen').style.display = 'none';
+    document.getElementById('scoreboard').classList.add('ready');
+    render();
+    // 启动轮询同步（PC 端可能也在记分）
+    setInterval(sync, 2500);
+  } catch (e) {
+    showScreen(e.message || '加载失败', true);
+  }
+}
+
+async function sync() {
+  try {
+    const fresh = await apiGet();
+    const changed = fresh.score_a !== match.score_a || fresh.score_b !== match.score_b ||
+                    fresh.game_a !== match.game_a || fresh.game_b !== match.game_b ||
+                    fresh.status !== match.status;
+    if (changed) {
+      match = fresh;
+      render();
+    }
+  } catch {}
+}
+
+function showScreen(msg, isError) {
+  const s = document.getElementById('loadScreen');
+  s.innerHTML = `<div class="big">${isError ? '⚠' : ''}</div><div class="msg">${msg}</div>`;
+}
+
+function render() {
+  // 取玩家名（match 不含玩家信息，简化为队 A / 队 B；如需昵称可扩展接口）
+  document.getElementById('blueName').textContent = match.team_a.length > 1 ? '队 A' : 'A';
+  document.getElementById('redName').textContent  = match.team_b.length > 1 ? '队 B' : 'B';
+  document.getElementById('blueGame').textContent = match.game_a;
+  document.getElementById('redGame').textContent  = match.game_b;
+  document.getElementById('gamesDisplay').textContent = `${match.game_a} : ${match.game_b}`;
+  blueScoreEl.textContent = match.score_a;
+  redScoreEl.textContent  = match.score_b;
+
+  // 发球指示
+  blueEl.classList.toggle('serving', match.server === 'a' && match.status !== 'done');
+  redEl.classList.toggle('serving', match.server === 'b' && match.status !== 'done');
+
+  // 比赛结束
+  if (match.status === 'done') {
+    const winnerSide = match.game_a > match.game_b ? 'a' : 'b';
+    const winnerName = winnerSide === 'a' ? '队 A 获胜' : '队 B 获胜';
+    document.getElementById('overWinner').textContent = winnerName;
+    document.getElementById('overFinal').textContent = `${match.game_a} : ${match.game_b}`;
+    document.getElementById('matchOver').classList.add('show');
+  } else {
+    document.getElementById('matchOver').classList.remove('show');
+  }
+}
+
+// ---------- 动画 ----------
+function ripple(block, x, y) {
+  const r = document.createElement('div');
+  r.className = 'ripple';
+  r.style.left = (x - 24) + 'px';
+  r.style.top = (y - 24) + 'px';
+  block.appendChild(r);
+  setTimeout(() => r.remove(), 500);
+}
+function floatText(block, text, x, y) {
+  const el = document.createElement('div');
+  el.className = 'float-text';
+  el.textContent = text;
+  el.style.left = (x - 10) + 'px';
+  el.style.top = (y - 30) + 'px';
+  block.appendChild(el);
+  setTimeout(() => el.remove(), 600);
+}
+function popUp(scoreEl) {
+  scoreEl.classList.remove('score-pop');
+  void scoreEl.offsetWidth;
+  scoreEl.classList.add('score-pop');
+}
+function squeeze(scoreEl) {
+  scoreEl.classList.remove('score-squeeze');
+  void scoreEl.offsetWidth;
+  scoreEl.classList.add('score-squeeze');
+}
+
+// ---------- 记分操作 ----------
+async function doScore(side) {
+  if (match.status === 'done') return;
+  try {
+    match = await apiScore(side === 'a' ? 'point_a' : 'point_b');
+    render();
+    // 动画
+    const block = side === 'a' ? blueEl : redEl;
+    const scoreEl = side === 'a' ? blueScoreEl : redScoreEl;
+    popUp(scoreEl);
+    const rect = block.getBoundingClientRect();
+    ripple(block, rect.width / 2, rect.height / 2);
+    floatText(block, '+1', rect.width / 2, rect.height / 2);
+  } catch (e) {}
+}
+
+async function doUndo() {
+  try {
+    match = await apiScore('undo');
+    render();
+    squeeze(blueScoreEl);
+    squeeze(redScoreEl);
+  } catch (e) {}
+}
+
+// ---------- 交互：点击得分 + 长按撤销 ----------
+function bindBlock(block, side, ring, ringFg) {
+  let timer = null;
+  let ringTimer = null;
+  let longPressed = false;
+  let startTime = 0;
+
+  block.addEventListener('pointerdown', (e) => {
+    longPressed = false;
+    startTime = Date.now();
+    block.setPointerCapture(e.pointerId);
+    // 延迟显示进度环
+    ringTimer = setTimeout(() => {
+      ring.classList.add('active');
+    }, 250);
+    // 长按计时
+    timer = setTimeout(() => {
+      longPressed = true;
+      ring.classList.remove('active');
+      ringFg.style.strokeDashoffset = RING_C;
+      doUndo();
+      // 触觉反馈（支持的设备）
+      if (navigator.vibrate) navigator.vibrate(30);
+    }, LONG_PRESS_MS);
+    // 进度环动画
+    animateRing(ringFg);
+  });
+
+  block.addEventListener('pointermove', (e) => {
+    // 移动超过阈值则取消
+    if (Math.abs(e.clientX - e.clientX) > 10) cancel();
+  });
+
+  block.addEventListener('pointerup', (e) => {
+    cancel();
+    if (!longPressed && Date.now() - startTime < LONG_PRESS_MS) {
+      doScore(side);
+      if (navigator.vibrate) navigator.vibrate(10);
+    }
+  });
+
+  block.addEventListener('pointercancel', cancel);
+  block.addEventListener('pointerleave', cancel);
+
+  function cancel() {
+    if (timer) { clearTimeout(timer); timer = null; }
+    if (ringTimer) { clearTimeout(ringTimer); ringTimer = null; }
+    ring.classList.remove('active');
+    ringFg.style.transition = 'none';
+    ringFg.style.strokeDashoffset = RING_C;
+    setTimeout(() => { ringFg.style.transition = ''; }, 50);
+  }
+}
+
+function animateRing(ringFg) {
+  ringFg.style.transition = 'none';
+  ringFg.style.strokeDashoffset = RING_C;
+  setTimeout(() => {
+    ringFg.style.transition = `stroke-dashoffset ${LONG_PRESS_MS}ms linear`;
+    ringFg.style.strokeDashoffset = '0';
+  }, 20);
+}
+
+bindBlock(blueEl, 'a', blueRing, blueRingFg);
+bindBlock(redEl, 'b', redRing, redRingFg);
+
+// ---------- 上滑退出：从红色块底部把手向上拖动，超过阈值返回 PC 记分界面 ----------
+const swipeBar = document.getElementById('swipeUpBar');
+let swipeDrag = null;
+const SWIPE_THRESHOLD = 80; // 上滑超过 80px 触发退出
+
+swipeBar.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  swipeDrag = { startY: e.clientY };
+  swipeBar.setPointerCapture(e.pointerId);
+  document.body.style.transition = 'none';
+});
+
+swipeBar.addEventListener('pointermove', (e) => {
+  if (!swipeDrag) return;
+  const dy = e.clientY - swipeDrag.startY;
+  if (dy < 0) {
+    // 向上拖动，整页跟随
+    document.body.classList.add('swiping');
+    document.body.style.transform = `translateY(${dy}px)`;
+  }
+});
+
+swipeBar.addEventListener('pointerup', (e) => {
+  if (!swipeDrag) return;
+  const dy = e.clientY - swipeDrag.startY;
+  document.body.classList.remove('swiping');
+  if (dy < -SWIPE_THRESHOLD) {
+    // 触发退出动画
+    document.body.style.transition = 'transform 0.35s cubic-bezier(0.4, 0, 1, 1)';
+    document.body.style.transform = 'translateY(-100%)';
+    setTimeout(exitToScoring, 320);
+  } else {
+    // 回弹
+    document.body.style.transition = 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)';
+    document.body.style.transform = '';
+    setTimeout(() => { document.body.style.transition = ''; }, 260);
+  }
+  swipeDrag = null;
+});
+
+swipeBar.addEventListener('pointercancel', () => {
+  if (swipeDrag) {
+    document.body.classList.remove('swiping');
+    document.body.style.transition = 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)';
+    document.body.style.transform = '';
+    setTimeout(() => { document.body.style.transition = ''; }, 260);
+    swipeDrag = null;
+  }
+});
+
+function exitToScoring() {
+  // 返回 PC/移动端记分界面：用 battle_id 跳到 matches.html
+  if (match && match.battle_id) {
+    location.href = `/matches.html?id=${match.battle_id}`;
+  } else {
+    // 兜底：返回首页
+    location.href = '/';
+  }
+}
+
+// 关闭结束遮罩
+document.getElementById('matchOver').addEventListener('click', () => {
+  document.getElementById('matchOver').classList.remove('show');
+});
+
+init();
+</script>
+</body>
+</html>

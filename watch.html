@@ -753,9 +753,9 @@ swipeBar.addEventListener('touchcancel', (e) => {
 
 function exitToScoring() {
   if (match && match.battle_id) {
-    location.href = `/matches.html?id=${match.battle_id}`;
+    location.href = `matches.html?id=${match.battle_id}`;
   } else {
-    location.href = '/';
+    location.href = 'index.html';
   }
 }
 

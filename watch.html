@@ -759,10 +759,10 @@ function exitToScoring() {
   }
 }
 
-// 关闭结束遮罩
-document.getElementById('matchOver').addEventListener('click', () => {
-  document.getElementById('matchOver').classList.remove('show');
-});
+// 关闭结束遮罩（全局 touchstart preventDefault 会导致 click 不触发，改用 touchend）
+const matchOverEl = document.getElementById('matchOver');
+matchOverEl.addEventListener('click', () => { matchOverEl.classList.remove('show'); });
+matchOverEl.addEventListener('touchend', (e) => { e.preventDefault(); matchOverEl.classList.remove('show'); }, { passive: false });
 
 init();
 </script>

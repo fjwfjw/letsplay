@@ -16848,3 +16848,57 @@ INFO:     127.0.0.1:57327 - "GET / HTTP/1.1" 200 OK
 INFO:     127.0.0.1:57328 - "GET /js/app.js HTTP/1.1" 200 OK
 INFO:     127.0.0.1:57329 - "GET /js/lobby.js HTTP/1.1" 200 OK
 INFO:     127.0.0.1:57330 - "GET /js/matches.js HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [9666]
+/Users/fanjiawei/IdeaProjects/letsplay/backend/main.py:64: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+/Users/fanjiawei/IdeaProjects/letsplay/backend/main.py:70: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("shutdown")
+INFO:     Started server process [24259]
+INFO:     Waiting for application startup.
+2026-06-18 22:22:54,369 [INFO] letsplay: [sweeper] started, interval=300s
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:57504 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57505 - "GET /js/api.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57504 - "GET /css/style.css?v=3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57506 - "GET /js/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57504 - "GET /api/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57524 - "GET /api/battles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57529 - "GET /api/battles HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58011 - "GET /api/me HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [24259]
+/Users/fanjiawei/IdeaProjects/letsplay/backend/main.py:64: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+/Users/fanjiawei/IdeaProjects/letsplay/backend/main.py:70: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("shutdown")
+INFO:     Started server process [34445]
+INFO:     Waiting for application startup.
+2026-06-18 22:32:41,869 [INFO] letsplay: [sweeper] started, interval=300s
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)

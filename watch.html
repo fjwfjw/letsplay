@@ -28,9 +28,9 @@
     font-family: -apple-system, "SF Pro Display", "Helvetica Neue", "PingFang SC", sans-serif;
     position: fixed;
     inset: 0;
-    /* iOS PWA / 添加到主屏后的安全区域：状态栏/灵动岛让位（高度减少30%） */
+    /* iOS PWA / 添加到主屏后的安全区域：状态栏/灵动岛完整让位 */
     padding-top: constant(safe-area-inset-top);
-    padding-top: calc(env(safe-area-inset-top) * 0.7);
+    padding-top: env(safe-area-inset-top);
     padding-bottom: constant(safe-area-inset-bottom);
     padding-bottom: calc(env(safe-area-inset-bottom) * 0.7);
   }

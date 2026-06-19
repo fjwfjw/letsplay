@@ -88,8 +88,8 @@ input, select { font-family: inherit; }
 .shell {
   max-width: 1080px;
   margin: 0 auto;
-  /* 顶部安全距离由 html, body 的 padding-top 统一提供（env(safe-area-inset-top)） */
-  padding: 28px 22px 80px;
+  /* 顶部安全距离由 html, body 的 padding-top 统一提供（env(safe-area-inset-top)），这里只留少量呼吸间距 */
+  padding: 12px 22px 80px;
 }
 
 .topbar {

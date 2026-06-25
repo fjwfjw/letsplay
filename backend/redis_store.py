@@ -306,3 +306,40 @@ class Store:
         out.sort(key=lambda x: x["created_at"], reverse=True)
         return out
 
+    def list_all_battles(self) -> list:
+        """扫描所有对战（含已结束），返回完整信息含人员和每场比分。用于后台管理页。"""
+        out = []
+        for key in self.r.scan_iter(match="battle:*", count=200):
+            key = key.decode() if isinstance(key, bytes) else key
+            if key.endswith(":players") or key.endswith(":matches"):
+                continue
+            bid = key.split(":", 1)[1]
+            battle = self.get_battle(bid)
+            if not battle:
+                continue
+            players = self.get_players(bid)
+            matches = self.get_matches(bid) if battle["status"] in ("ongoing", "finished") else []
+            # 为每场补充队伍球员信息
+            pmap = {p["id"]: p for p in players}
+            for m in matches:
+                m["team_a_players"] = [pmap.get(u, {"id": u, "nickname": u, "avatar": "?"}) for u in m.get("team_a", [])]
+                m["team_b_players"] = [pmap.get(u, {"id": u, "nickname": u, "avatar": "?"}) for u in m.get("team_b", [])]
+            creator = pmap.get(battle["creator_id"], {"id": battle["creator_id"], "nickname": battle["creator_id"], "avatar": "?"})
+            out.append({
+                "id": bid,
+                "type": battle["type"],
+                "max_players": battle["max_players"],
+                "total_matches": battle["total_matches"],
+                "best_of": battle["best_of"],
+                "game_point": battle["game_point"],
+                "status": battle["status"],
+                "creator": creator,
+                "created_at": int(battle["created_at"]),
+                "finished_at": int(battle["finished_at"]) if battle.get("finished_at") else None,
+                "players_count": len(players),
+                "players": players,
+                "matches": matches,
+            })
+        out.sort(key=lambda x: x["created_at"], reverse=True)
+        return out
+

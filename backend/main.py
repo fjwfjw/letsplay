@@ -98,6 +98,12 @@ def admin_sweeper_status():
     }
 
 
+@app.get("/api/admin/battles")
+def admin_all_battles():
+    """返回所有对战房间（含已结束），包含人员和比分。用于后台管理页。"""
+    return {"battles": store.list_all_battles()}
+
+
 def client_ip(req: Request) -> str:
     """取真实客户端 IP（支持反代）。"""
     fwd = req.headers.get("x-forwarded-for")
@@ -381,6 +387,11 @@ def matches_page():
 @app.get("/watch.html")
 def watch_page():
     return FileResponse(os.path.join(ROOT_DIR, "watch.html"))
+
+
+@app.get("/admin.html")
+def admin_page():
+    return FileResponse(os.path.join(ROOT_DIR, "admin.html"))
 
 
 # PWA 图标与清单文件

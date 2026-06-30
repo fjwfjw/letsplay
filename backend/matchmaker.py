@@ -116,3 +116,35 @@ def fairness_report(players, matches, match_type) -> dict:
         "max": max(vals),
         "balanced": (max(vals) - min(vals)) <= 1,
     }
+
+
+def generate_free_matches(teams: dict, num_matches: int, seed: int = None) -> list:
+    """自由对战：按用户自定义队伍生成对战列表，队伍间两两循环对战。
+
+    Args:
+        teams: {"team_0": [uid,...], "team_1": [uid,...], ...}
+               每支队伍的人数由前端控制（单打每队 1 人，双打每队 2 人）。
+        num_matches: 对战场数
+        seed: 随机种子
+
+    Returns:
+        [{"index": 0, "team_a": [uids], "team_b": [uids]}, ...]
+    """
+    rng = random.Random(seed)
+    team_ids = sorted(teams.keys())
+    if len(team_ids) < 2:
+        return []
+
+    # 所有队伍的两两组合，打乱后循环填充到指定场数
+    pairs = list(combinations(team_ids, 2))
+    rng.shuffle(pairs)
+
+    matches = []
+    for i in range(num_matches):
+        tid_a, tid_b = pairs[i % len(pairs)]
+        matches.append({
+            "index": i,
+            "team_a": list(teams[tid_a]),
+            "team_b": list(teams[tid_b]),
+        })
+    return matches

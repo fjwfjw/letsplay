@@ -5,7 +5,7 @@ import uuid
 import redis
 
 from nickname import generate_identity
-from matchmaker import generate_matches, fairness_report
+from matchmaker import generate_matches, fairness_report, generate_free_matches
 
 # TTL（秒）：对战活跃时保留 24h；结束后保留 2h 再清理；用户身份 7 天
 BATTLE_TTL = 24 * 3600
@@ -75,7 +75,7 @@ class Store:
         self.r.expire(key, CREATE_LIMIT_WINDOW)
 
     def create_battle(self, creator_uid: str, match_type: str, max_players: int, total_matches: int,
-                      best_of: int = 3, game_point: int = 21) -> dict:
+                      best_of: int = 3, game_point: int = 21, assign_mode: str = "random") -> dict:
         bid = uuid.uuid4().hex[:8]
         now = int(time.time())
         self.r.hset(f"battle:{bid}", mapping={
@@ -85,6 +85,7 @@ class Store:
             "total_matches": str(total_matches),
             "best_of": str(best_of),
             "game_point": str(game_point),
+            "assign_mode": assign_mode,  # random | free
             "status": "waiting",  # waiting | ongoing | finished
             "creator_id": creator_uid,
             "created_at": str(now),
@@ -102,6 +103,7 @@ class Store:
         data["total_matches"] = int(data["total_matches"])
         data["best_of"] = int(data.get("best_of", "3"))
         data["game_point"] = int(data.get("game_point", "21"))
+        data["assign_mode"] = data.get("assign_mode", "random")  # 兼容旧数据
         # 活跃对战访问即续期；已结束的保持短 TTL 不续
         if data["status"] != "finished":
             self._refresh_battle_ttl(bid, BATTLE_TTL)
@@ -126,6 +128,46 @@ class Store:
     def is_player(self, bid: str, uid: str) -> bool:
         return uid in self.r.smembers(f"battle:{bid}:players")
 
+    # ---------- 分配模式与自由组队 ----------
+    def set_assign_mode(self, bid: str, mode: str) -> dict:
+        """设置对战分配模式（仅 waiting 状态可改）。"""
+        battle = self.get_battle(bid)
+        if not battle:
+            raise ValueError("对战不存在")
+        if battle["status"] != "waiting":
+            raise ValueError("对战已开始，无法修改分配模式")
+        if mode not in ("random", "free"):
+            raise ValueError("模式必须为 random 或 free")
+        self.r.hset(f"battle:{bid}", "assign_mode", mode)
+        return self.get_battle(bid)
+
+    def set_teams(self, bid: str, teams: dict) -> dict:
+        """保存自由组队配置。teams = {"team_0": [uid,...], ...}"""
+        battle = self.get_battle(bid)
+        if not battle:
+            raise ValueError("对战不存在")
+        if battle["status"] != "waiting":
+            raise ValueError("对战已开始，无法修改队伍")
+        # 校验：所有 uid 必须是已加入玩家，且不重复
+        joined = set(self.r.smembers(f"battle:{bid}:players"))
+        seen = set()
+        for tid, uids in teams.items():
+            for u in uids:
+                if u not in joined:
+                    raise ValueError(f"玩家 {u} 未加入对战")
+                if u in seen:
+                    raise ValueError(f"玩家 {u} 被重复分配")
+                seen.add(u)
+        self.r.set(f"battle:{bid}:teams", json.dumps(teams))
+        self.r.expire(f"battle:{bid}:teams", BATTLE_TTL)
+        return self.get_teams(bid)
+
+    def get_teams(self, bid: str) -> dict:
+        raw = self.r.get(f"battle:{bid}:teams")
+        if not raw:
+            return {}
+        return json.loads(raw)
+
     def start_battle(self, bid: str, uid: str) -> dict:
         battle = self.get_battle(bid)
         if not battle:
@@ -140,7 +182,20 @@ class Store:
             raise ValueError(f"至少需要 {min_players} 人")
 
         seed = int(battle["created_at"]) + hash(bid)
-        matches = generate_matches(players_uids, battle["type"], battle["total_matches"], seed)
+        assign_mode = battle.get("assign_mode", "random")
+
+        if assign_mode == "free":
+            teams = self.get_teams(bid)
+            if len(teams) < 2:
+                raise ValueError("自由对战至少需要 2 支队伍")
+            # 校验每队人数符合单/双打要求
+            per_team = 1 if battle["type"] == "singles" else 2
+            for tid, uids in teams.items():
+                if len(uids) != per_team:
+                    raise ValueError(f"每支队伍需 {per_team} 人")
+            matches = generate_free_matches(teams, battle["total_matches"], seed)
+        else:
+            matches = generate_matches(players_uids, battle["type"], battle["total_matches"], seed)
 
         pipe = self.r.pipeline()
         pipe.hset(f"battle:{bid}", "status", "ongoing")
@@ -210,6 +265,7 @@ class Store:
         pipe.expire(f"battle:{bid}", ttl)
         pipe.expire(f"battle:{bid}:players", ttl)
         pipe.expire(f"battle:{bid}:matches", ttl)
+        pipe.expire(f"battle:{bid}:teams", ttl)
         for mid in self.r.lrange(f"battle:{bid}:matches", 0, -1):
             pipe.expire(f"match:{mid}", ttl)
         pipe.execute()
@@ -296,6 +352,7 @@ class Store:
                 "total_matches": battle["total_matches"],
                 "best_of": battle["best_of"],
                 "game_point": battle["game_point"],
+                "assign_mode": battle.get("assign_mode", "random"),
                 "status": battle["status"],
                 "creator_id": battle["creator_id"],
                 "created_at": int(battle["created_at"]),
@@ -332,6 +389,7 @@ class Store:
                 "total_matches": battle["total_matches"],
                 "best_of": battle["best_of"],
                 "game_point": battle["game_point"],
+                "assign_mode": battle.get("assign_mode", "random"),
                 "status": battle["status"],
                 "creator": creator,
                 "created_at": int(battle["created_at"]),

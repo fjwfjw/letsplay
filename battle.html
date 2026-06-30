@@ -58,6 +58,51 @@
       </div>
     </section>
 
+    <!-- 分配方式（仅创建者可见） -->
+    <section class="panel hidden" id="assignPanel" style="margin-top:20px;">
+      <div class="panel-head">
+        <h2>分配方式</h2>
+        <span class="tag">Assign</span>
+      </div>
+      <div class="type-grid" id="assignGrid">
+        <div class="type-card selected" data-mode="random">
+          <div class="ico">🎲</div>
+          <div class="label">随机分配</div>
+          <div class="desc">系统均匀分配队友与对手，人人上场</div>
+          <div class="check">✓</div>
+        </div>
+        <div class="type-card" data-mode="free">
+          <div class="ico">🤝</div>
+          <div class="label">自由对战</div>
+          <div class="desc">自己组队，按自定义队伍对战</div>
+          <div class="check">✓</div>
+        </div>
+      </div>
+
+      <!-- 自由组队面板 -->
+      <div class="hidden" id="teamsPanel" style="margin-top:18px;">
+        <div class="field-label" style="margin-bottom:10px;">
+          <span class="name">队伍编排</span>
+          <span class="val muted" id="teamsHint">点击玩家分配到队伍，再点移出</span>
+        </div>
+        <!-- 队伍数量控制 -->
+        <div class="btn-row" style="margin-bottom:14px;">
+          <button class="btn btn-ghost" id="teamMinusBtn">－ 队伍</button>
+          <span class="val" id="teamCountVal" style="min-width:60px;text-align:center;">2</span>
+          <button class="btn btn-ghost" id="teamPlusBtn">＋ 队伍</button>
+        </div>
+        <!-- 未分配玩家池 -->
+        <div class="field-label" style="margin-bottom:8px;">
+          <span class="name">未分配玩家</span>
+          <span class="val" id="poolCount">0</span>
+        </div>
+        <div class="players stagger" id="playerPool" style="margin-bottom:16px;"></div>
+        <!-- 各队伍 -->
+        <div id="teamsList"></div>
+        <button class="btn btn-ghost btn-block" id="saveTeamsBtn" style="margin-top:14px;">保存队伍配置</button>
+      </div>
+    </section>
+
     <!-- 玩家列表 -->
     <section class="panel" style="margin-top:20px;">
       <div class="panel-head">

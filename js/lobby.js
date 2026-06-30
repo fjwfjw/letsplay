@@ -55,6 +55,7 @@ async function refresh() {
 
 function render(data) {
   const { battle, user, players, joined, is_creator } = data;
+  window._battleType = battle.type;  // 供组队函数使用
 
   // 顶栏用户
   const chip = $('#userChip');
@@ -117,6 +118,14 @@ function render(data) {
     watchBtn.addEventListener('touchend', (e) => { e.preventDefault(); goWatch(); }, { passive: false });
   }
 
+  // 分配方式面板（仅创建者）
+  if (is_creator) {
+    $('#assignPanel').classList.remove('hidden');
+    syncAssignUI(battle, players, data.teams || {});
+  } else {
+    $('#assignPanel').classList.add('hidden');
+  }
+
   // 按钮区
   $('#joinBtn').classList.toggle('hidden', joined);
   $('#startBtn').classList.toggle('hidden', !is_creator);
@@ -124,13 +133,218 @@ function render(data) {
 
   if (is_creator) {
     const minP = battle.type === 'singles' ? 2 : 4;
-    const canStart = players.length >= minP;
+    const canStart = canStartBattle(battle, players);
     $('#startBtn').disabled = !canStart;
     $('#startBtn').textContent = canStart
       ? '开始对战 →'
       : `等待 ${minP} 人加入（当前 ${players.length}）`;
   }
 }
+
+// ---------- 自由对战：分配模式与组队 ----------
+let teamsState = {};      // {team_0: [uid,...], ...}
+let teamCount = 2;        // 当前队伍数量
+let localMode = null;     // 本地缓存的模式，避免轮询覆盖用户操作
+let playersCache = [];    // 缓存玩家列表
+
+function perTeamSize(battle) {
+  return battle.type === 'singles' ? 1 : 2;
+}
+
+function canStartBattle(battle, players) {
+  const minP = battle.type === 'singles' ? 2 : 4;
+  if (players.length < minP) return false;
+  // 自由对战：需要所有玩家已分配到队伍，且至少 2 支满员队伍
+  if ((battle.assign_mode || localMode) === 'free') {
+    const per = perTeamSize(battle);
+    const fullTeams = Object.values(teamsState).filter(t => t.length === per);
+    const assigned = Object.values(teamsState).reduce((s, t) => s + t.length, 0);
+    return fullTeams.length >= 2 && assigned === players.length;
+  }
+  return true;
+}
+
+function syncAssignUI(battle, players, serverTeams) {
+  playersCache = players;
+  // 高亮当前模式卡片
+  const mode = battle.assign_mode || 'random';
+  if (localMode === null) localMode = mode;
+  $$('#assignGrid .type-card').forEach(c => {
+    c.classList.toggle('selected', c.dataset.mode === localMode);
+  });
+  // 显示/隐藏组队面板
+  $('#teamsPanel').classList.toggle('hidden', localMode !== 'free');
+
+  if (localMode === 'free') {
+    // 同步队伍状态（首次或服务端有数据时）
+    if (Object.keys(teamsState).length === 0 && serverTeams && Object.keys(serverTeams).length > 0) {
+      teamsState = JSON.parse(JSON.stringify(serverTeams));
+      teamCount = Math.max(2, Object.keys(teamsState).length);
+    }
+    renderTeamsUI(battle, players);
+  }
+}
+
+function renderTeamsUI(battle, players) {
+  const per = perTeamSize(battle);
+  $('#teamCountVal').textContent = teamCount;
+
+  // 保证 teamsState 有 team_0 ~ team_{teamCount-1}
+  for (let i = 0; i < teamCount; i++) {
+    const tid = `team_${i}`;
+    if (!teamsState[tid]) teamsState[tid] = [];
+  }
+  // 移除多余的队伍（其成员回到池）
+  Object.keys(teamsState).forEach(tid => {
+    const idx = parseInt(tid.split('_')[1], 10);
+    if (idx >= teamCount) {
+      delete teamsState[tid];
+    }
+  });
+
+  // 已分配玩家集合
+  const assigned = new Set();
+  Object.values(teamsState).forEach(arr => arr.forEach(u => assigned.add(u)));
+
+  // 未分配玩家池
+  const pool = players.filter(p => !assigned.has(p.id));
+  $('#poolCount').textContent = pool.length;
+  const poolEl = $('#playerPool');
+  poolEl.innerHTML = '';
+  if (pool.length === 0) {
+    poolEl.innerHTML = '<div class="muted" style="padding:8px;font-size:13px;">所有玩家已分配</div>';
+  } else {
+    pool.forEach(p => {
+      const el = document.createElement('div');
+      el.className = 'player';
+      el.innerHTML = `<div class="ava">${p.avatar}</div><div class="meta"><div class="nick">${p.nickname}</div></div>`;
+      // 点击：分配到第一个有空位的队伍
+      el.style.cursor = 'pointer';
+      el.addEventListener('click', () => assignToFirstTeam(p.id));
+      poolEl.appendChild(el);
+    });
+  }
+
+  // 各队伍
+  const teamsList = $('#teamsList');
+  teamsList.innerHTML = '';
+  const colors = ['#3ad4ff', '#ff5e3a', '#3aff9e', '#ffd23a', '#a23aff', '#ff3a8c'];
+  for (let i = 0; i < teamCount; i++) {
+    const tid = `team_${i}`;
+    const members = teamsState[tid] || [];
+    const memberPlayers = members.map(uid => players.find(p => p.id === uid)).filter(Boolean);
+    const full = members.length >= per;
+    const wrap = document.createElement('div');
+    wrap.className = 'panel';
+    wrap.style.marginBottom = '12px';
+    wrap.style.borderLeft = `4px solid ${colors[i % colors.length]}`;
+    wrap.innerHTML = `
+      <div class="field-label" style="margin-bottom:8px;">
+        <span class="name" style="color:${colors[i % colors.length]}">队伍 ${String.fromCharCode(65 + i)}</span>
+        <span class="val muted">${members.length}/${per}</span>
+      </div>
+      <div class="players" data-tid="${tid}"></div>
+    `;
+    const memberWrap = wrap.querySelector('.players');
+    if (memberPlayers.length === 0) {
+      memberWrap.innerHTML = '<div class="muted" style="padding:6px;font-size:12px;">空位</div>';
+    } else {
+      memberPlayers.forEach(p => {
+        const el = document.createElement('div');
+        el.className = 'player';
+        el.innerHTML = `<div class="ava">${p.avatar}</div><div class="meta"><div class="nick">${p.nickname}</div></div>`;
+        el.style.cursor = 'pointer';
+        el.addEventListener('click', () => removeFromTeam(p.id));
+        memberWrap.appendChild(el);
+      });
+    }
+    teamsList.appendChild(wrap);
+  }
+
+  // 更新提示
+  $('#teamsHint').textContent = per === 1 ? '单打：每队 1 人' : '双打：每队 2 人';
+}
+
+function assignToFirstTeam(uid) {
+  const per = perTeamSize({ type: window._battleType || 'singles' });
+  for (let i = 0; i < teamCount; i++) {
+    const tid = `team_${i}`;
+    if ((teamsState[tid] || []).length < per) {
+      // 先从其他队伍移除（防止重复）
+      removeFromTeam(uid);
+      teamsState[tid].push(uid);
+      renderTeamsUI({ type: window._battleType }, playersCache);
+      return;
+    }
+  }
+  toast('所有队伍已满，请增加队伍数量');
+}
+
+function removeFromTeam(uid) {
+  Object.keys(teamsState).forEach(tid => {
+    teamsState[tid] = (teamsState[tid] || []).filter(u => u !== uid);
+  });
+  renderTeamsUI({ type: window._battleType }, playersCache);
+}
+
+// 分配模式卡片切换
+$$('#assignGrid .type-card').forEach(card => {
+  card.addEventListener('click', async () => {
+    const mode = card.dataset.mode;
+    if (mode === localMode) return;
+    localMode = mode;
+    $$('#assignGrid .type-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    try {
+      await API.setAssignMode(BID, mode);
+      toast(mode === 'free' ? '已切换为自由对战，请组队' : '已切换为随机分配');
+      if (mode === 'free') {
+        $('#teamsPanel').classList.remove('hidden');
+        renderTeamsUI({ type: window._battleType }, playersCache);
+      } else {
+        $('#teamsPanel').classList.add('hidden');
+      }
+    } catch (e) {
+      toast(e.message, true);
+      // 回滚
+      localMode = mode === 'free' ? 'random' : 'free';
+      $$('#assignGrid .type-card').forEach(c => {
+        c.classList.toggle('selected', c.dataset.mode === localMode);
+      });
+    }
+  });
+});
+
+// 队伍数量增减
+$('#teamMinusBtn').addEventListener('click', () => {
+  if (teamCount <= 2) { toast('至少需要 2 支队伍'); return; }
+  // 移除最后一只队伍的成员回到池
+  const tid = `team_${teamCount - 1}`;
+  delete teamsState[tid];
+  teamCount--;
+  renderTeamsUI({ type: window._battleType }, playersCache);
+});
+$('#teamPlusBtn').addEventListener('click', () => {
+  if (teamCount >= 6) { toast('最多 6 支队伍'); return; }
+  teamCount++;
+  renderTeamsUI({ type: window._battleType }, playersCache);
+});
+
+// 保存队伍配置
+$('#saveTeamsBtn').addEventListener('click', async () => {
+  const btn = $('#saveTeamsBtn');
+  btn.disabled = true;
+  btn.textContent = '保存中…';
+  try {
+    await API.setTeams(BID, teamsState);
+    toast('队伍配置已保存');
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '保存队伍配置';
+  }
+});
 
 // 加入对战
 $('#joinBtn').addEventListener('click', async () => {
@@ -155,6 +369,10 @@ $('#startBtn').addEventListener('click', async () => {
   btn.disabled = true;
   btn.innerHTML = '<span class="loading"></span> 编排中…';
   try {
+    // 自由对战：先保存队伍配置再开始
+    if (localMode === 'free') {
+      await API.setTeams(BID, teamsState);
+    }
     await API.startBattle(BID);
     toast('对战开始！');
     setTimeout(() => { location.href = `matches.html?id=${BID}`; }, 400);

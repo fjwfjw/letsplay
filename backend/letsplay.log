@@ -20274,3 +20274,92 @@ INFO:     125.123.157.188:0 - "GET /api/battles HTTP/1.1" 200 OK
 INFO:     125.123.157.188:0 - "OPTIONS /api/battles HTTP/1.1" 200 OK
 INFO:     125.123.157.188:0 - "GET /api/battles HTTP/1.1" 200 OK
 INFO:     125.123.157.188:0 - "GET /api/battles HTTP/1.1" 200 OK
+D:\project\letsplay\backend\main.py:64: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+D:\project\letsplay\backend\main.py:70: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("shutdown")
+INFO:     Started server process [38080]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     10.0.0.91:0 - "GET /api/me HTTP/1.1" 200 OK
+INFO:     10.0.0.91:0 - "POST /api/battle/create HTTP/1.1" 200 OK
+INFO:     10.0.0.91:0 - "GET /api/me HTTP/1.1" 200 OK
+INFO:     10.0.0.92:0 - "GET /api/me HTTP/1.1" 200 OK
+INFO:     10.0.0.93:0 - "GET /api/me HTTP/1.1" 200 OK
+INFO:     10.0.0.94:0 - "GET /api/me HTTP/1.1" 200 OK
+INFO:     10.0.0.94:0 - "POST /api/battle/create HTTP/1.1" 200 OK
+INFO:     10.0.0.92:0 - "POST /api/battle/b478fc3c/join HTTP/1.1" 200 OK
+INFO:     10.0.0.93:0 - "POST /api/battle/b478fc3c/join HTTP/1.1" 200 OK
+INFO:     10.0.0.94:0 - "POST /api/battle/b478fc3c/join HTTP/1.1" 200 OK
+INFO:     10.0.0.91:0 - "GET /api/battle/b478fc3c HTTP/1.1" 200 OK
+INFO:     10.0.0.91:0 - "POST /api/battle/b478fc3c/assign-mode HTTP/1.1" 403 Forbidden
+INFO:     10.0.0.91:0 - "GET /api/me HTTP/1.1" 200 OK
+INFO:     10.0.0.92:0 - "GET /api/me HTTP/1.1" 200 OK
+INFO:     10.0.0.93:0 - "GET /api/me HTTP/1.1" 200 OK
+INFO:     10.0.0.94:0 - "GET /api/me HTTP/1.1" 200 OK
+INFO:     10.0.0.91:0 - "POST /api/battle/create HTTP/1.1" 200 OK
+INFO:     10.0.0.92:0 - "POST /api/battle/2b01263d/join HTTP/1.1" 200 OK
+INFO:     10.0.0.93:0 - "POST /api/battle/2b01263d/join HTTP/1.1" 200 OK
+INFO:     10.0.0.94:0 - "POST /api/battle/2b01263d/join HTTP/1.1" 200 OK
+INFO:     10.0.0.91:0 - "GET /api/battle/2b01263d HTTP/1.1" 200 OK
+INFO:     10.0.0.91:0 - "POST /api/battle/2b01263d/assign-mode HTTP/1.1" 200 OK
+INFO:     10.0.0.91:0 - "POST /api/battle/2b01263d/teams HTTP/1.1" 200 OK
+INFO:     10.0.0.91:0 - "POST /api/battle/2b01263d/start HTTP/1.1" 200 OK
+INFO:     10.0.1.11:0 - "GET /api/me HTTP/1.1" 200 OK
+INFO:     10.0.1.12:0 - "GET /api/me HTTP/1.1" 200 OK
+INFO:     10.0.1.13:0 - "GET /api/me HTTP/1.1" 200 OK
+INFO:     10.0.1.14:0 - "GET /api/me HTTP/1.1" 200 OK
+INFO:     10.0.1.15:0 - "GET /api/me HTTP/1.1" 200 OK
+INFO:     10.0.1.16:0 - "GET /api/me HTTP/1.1" 200 OK
+INFO:     10.0.1.11:0 - "POST /api/battle/create HTTP/1.1" 200 OK
+INFO:     10.0.1.12:0 - "POST /api/battle/5040e412/join HTTP/1.1" 200 OK
+INFO:     10.0.1.13:0 - "POST /api/battle/5040e412/join HTTP/1.1" 200 OK
+INFO:     10.0.1.14:0 - "POST /api/battle/5040e412/join HTTP/1.1" 200 OK
+INFO:     10.0.1.15:0 - "POST /api/battle/5040e412/join HTTP/1.1" 200 OK
+INFO:     10.0.1.16:0 - "POST /api/battle/5040e412/join HTTP/1.1" 200 OK
+INFO:     10.0.1.11:0 - "GET /api/battle/5040e412 HTTP/1.1" 200 OK
+INFO:     10.0.1.11:0 - "POST /api/battle/5040e412/teams HTTP/1.1" 200 OK
+INFO:     10.0.1.11:0 - "POST /api/battle/5040e412/start HTTP/1.1" 200 OK
+2026-06-30 09:53:38,668 [ERROR] letsplay: [sweep] error: WRONGTYPE Operation against a key holding the wrong kind of value
+Traceback (most recent call last):
+  File "D:\project\letsplay\backend\main.py", line 53, in _sweeper_loop
+    stats = store.sweep_expired_battles()
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\project\letsplay\backend\redis_store.py", line 303, in sweep_expired_battles
+    battle = self.get_battle(bid)
+             ^^^^^^^^^^^^^^^^^^^^
+  File "D:\project\letsplay\backend\redis_store.py", line 99, in get_battle
+    data = self.r.hgetall(f"battle:{bid}")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python311\Lib\site-packages\redis\commands\core.py", line 4966, in hgetall
+    return self.execute_command("HGETALL", name)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python311\Lib\site-packages\redis\client.py", line 548, in execute_command
+    return conn.retry.call_with_retry(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python311\Lib\site-packages\redis\retry.py", line 62, in call_with_retry
+    return do()
+           ^^^^
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python311\Lib\site-packages\redis\client.py", line 549, in <lambda>
+    lambda: self._send_command_parse_response(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python311\Lib\site-packages\redis\client.py", line 525, in _send_command_parse_response
+    return self.parse_response(conn, command_name, **options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python311\Lib\site-packages\redis\client.py", line 565, in parse_response
+    response = connection.read_response()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python311\Lib\site-packages\redis\connection.py", line 536, in read_response
+    raise response
+redis.exceptions.ResponseError: WRONGTYPE Operation against a key holding the wrong kind of value

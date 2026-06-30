@@ -140,6 +140,7 @@ class CreateBody(BaseModel):
     total_matches: int
     best_of: int = 3      # 局制：1（一局定胜负）或 3（三局两胜）
     game_point: int = 21  # 单局比分制：15 或 21
+    assign_mode: str = "random"  # random | free
 
 
 @app.post("/api/battle/create")
@@ -157,13 +158,15 @@ def create_battle(body: CreateBody, req: Request):
         raise HTTPException(400, "局制只能为 1（一局定胜负）或 3（三局两胜）")
     if body.game_point not in (15, 21):
         raise HTTPException(400, "比分制只能为 15 或 21")
+    if body.assign_mode not in ("random", "free"):
+        raise HTTPException(400, "分配模式只能为 random 或 free")
     user = me(req)
     ip = client_ip(req)
     # 限流：单个 IP 8 小时内最多 3 场对战
     if not store.check_create_limit(ip):
         raise HTTPException(429, "8 小时内创建对战次数已达上限（3 场），请稍后再试")
     battle = store.create_battle(user["id"], body.type, body.max_players, body.total_matches,
-                                 body.best_of, body.game_point)
+                                 body.best_of, body.game_point, body.assign_mode)
     store.record_create(ip, battle["id"])
     return {"battle": battle, "user": user, "players": store.get_players(battle["id"])}
 
@@ -182,6 +185,7 @@ def get_battle(bid: str, req: Request):
         "players": players,
         "joined": joined,
         "is_creator": battle["creator_id"] == user["id"],
+        "teams": store.get_teams(bid),
     }
 
 
@@ -203,6 +207,44 @@ def start_battle(bid: str, req: Request):
     except ValueError as e:
         raise HTTPException(403, str(e))
     return {"ok": True, "matches": store.get_matches(bid)}
+
+
+class AssignModeBody(BaseModel):
+    mode: str  # random | free
+
+
+@app.post("/api/battle/{bid}/assign-mode")
+def set_assign_mode(bid: str, body: AssignModeBody, req: Request):
+    user = me(req)
+    battle = store.get_battle(bid)
+    if not battle:
+        raise HTTPException(404, "对战不存在")
+    if battle["creator_id"] != user["id"]:
+        raise HTTPException(403, "仅创建者可修改分配模式")
+    try:
+        store.set_assign_mode(bid, body.mode)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "battle": store.get_battle(bid)}
+
+
+class TeamsBody(BaseModel):
+    teams: dict  # {"team_0": [uid,...], ...}
+
+
+@app.post("/api/battle/{bid}/teams")
+def set_teams(bid: str, body: TeamsBody, req: Request):
+    user = me(req)
+    battle = store.get_battle(bid)
+    if not battle:
+        raise HTTPException(404, "对战不存在")
+    if battle["creator_id"] != user["id"]:
+        raise HTTPException(403, "仅创建者可组队")
+    try:
+        teams = store.set_teams(bid, body.teams)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "teams": teams}
 
 
 @app.get("/api/battle/{bid}/matches")

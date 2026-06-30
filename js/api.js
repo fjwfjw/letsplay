@@ -21,18 +21,28 @@ const API = {
   },
   me() { return this._fetch('/api/me'); },
   listBattles() { return this._fetch('/api/battles'); },
-  createBattle(type, maxPlayers, totalMatches, bestOf = 3, gamePoint = 21) {
+  createBattle(type, maxPlayers, totalMatches, bestOf = 3, gamePoint = 21, assignMode = 'random') {
     return this._fetch('/api/battle/create', {
       method: 'POST',
       body: JSON.stringify({
         type, max_players: maxPlayers, total_matches: totalMatches,
-        best_of: bestOf, game_point: gamePoint,
+        best_of: bestOf, game_point: gamePoint, assign_mode: assignMode,
       }),
     });
   },
   getBattle(bid) { return this._fetch(`/api/battle/${bid}`); },
   joinBattle(bid) { return this._fetch(`/api/battle/${bid}/join`, { method: 'POST' }); },
   startBattle(bid) { return this._fetch(`/api/battle/${bid}/start`, { method: 'POST' }); },
+  setAssignMode(bid, mode) {
+    return this._fetch(`/api/battle/${bid}/assign-mode`, {
+      method: 'POST', body: JSON.stringify({ mode }),
+    });
+  },
+  setTeams(bid, teams) {
+    return this._fetch(`/api/battle/${bid}/teams`, {
+      method: 'POST', body: JSON.stringify({ teams }),
+    });
+  },
   getMatches(bid) { return this._fetch(`/api/battle/${bid}/matches`); },
   score(mid, action) {
     return this._fetch(`/api/match/${mid}/score`, {

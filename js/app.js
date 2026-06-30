@@ -287,3 +287,21 @@ setInterval(async () => {
     roomsDot.hidden = my === 0;
   } catch {}
 }, 15000);
+
+// ---------- 隐藏入口：连点"局"字 3 次进入 admin ----------
+(() => {
+  const ju = $('#secretJu');
+  if (!ju) return;
+  let clickCount = 0;
+  let clickTimer = null;
+  ju.addEventListener('click', () => {
+    clickCount++;
+    // 800ms 内连续点击才有效，超时重置
+    clearTimeout(clickTimer);
+    clickTimer = setTimeout(() => { clickCount = 0; }, 800);
+    if (clickCount >= 3) {
+      clickCount = 0;
+      location.href = 'admin.html';
+    }
+  });
+})();

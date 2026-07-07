@@ -38,6 +38,11 @@
       line-height: 1.6;
       min-height: 100vh;
       overflow-x: hidden;
+      /* iOS PWA / 添加到主屏后的安全区域：顶部状态栏完整保留，底部 Home Indicator 减少30% */
+      padding-top: constant(safe-area-inset-top);
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: constant(safe-area-inset-bottom);
+      padding-bottom: calc(env(safe-area-inset-bottom) * 0.7);
     }
 
     body::before {
@@ -53,7 +58,8 @@
     .shell {
       max-width: 1200px;
       margin: 0 auto;
-      padding: 24px 20px 80px;
+      /* 顶部安全距离由 html, body 的 padding-top 统一提供，这里只留少量呼吸间距 */
+      padding: 4px 20px 80px;
     }
 
     /* ===== Topbar ===== */

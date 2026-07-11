@@ -4,3 +4,6 @@ tmp-homepage2/
 # 日志和进程文件
 *.log
 *.pid
+
+# 包含敏感配置的启动脚本
+backend/start.sh

@@ -28,9 +28,16 @@ if not log.handlers:
 
 app = FastAPI(title="LetsPlay 对战记分")
 
+# CORS 白名单：GitHub Pages 前端 + 本地开发
+CORS_ORIGINS = [
+    "https://fjwfjw.github.io",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -39,6 +46,18 @@ REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
 store = Store(r)
+
+# Admin 认证 token（环境变量配置，未设置则 admin 功能不可用）
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
+
+
+def require_admin(req: Request):
+    """校验 admin token，通过 Header 或 query 参数传递。"""
+    if not ADMIN_TOKEN:
+        raise HTTPException(503, "Admin 功能未启用（未配置 ADMIN_TOKEN）")
+    token = req.headers.get("X-Admin-Token") or req.query_params.get("token", "")
+    if token != ADMIN_TOKEN:
+        raise HTTPException(403, "无权访问")
 
 
 # ---------- 后台过期清理 ----------
@@ -80,12 +99,14 @@ async def _stop_sweeper():
 
 # 手动触发清理（便于测试 / 紧急清理）
 @app.post("/api/admin/sweep")
-def admin_sweep():
+def admin_sweep(req: Request):
+    require_admin(req)
     return store.sweep_expired_battles()
 
 
 @app.get("/api/admin/sweeper")
-def admin_sweeper_status():
+def admin_sweeper_status(req: Request):
+    require_admin(req)
     """返回后台 sweeper task 状态。"""
     t = getattr(app.state, "sweeper", None)
     if t is None:
@@ -99,17 +120,34 @@ def admin_sweeper_status():
 
 
 @app.get("/api/admin/battles")
-def admin_all_battles():
+def admin_all_battles(req: Request):
     """返回所有对战房间（含已结束），包含人员和比分。用于后台管理页。"""
-    return {"battles": store.list_all_battles()}
+    require_admin(req)
+    # 不泄露用户 IP
+    battles = store.list_all_battles()
+    for b in battles:
+        for p in b.get("players", []):
+            p.pop("ip", None)
+    return {"battles": battles}
+
+
+# 反向代理可信 IP 白名单（空则不信任任何 X-Forwarded-For）
+TRUSTED_PROXIES = set(os.getenv("TRUSTED_PROXIES", "").split(",")) if os.getenv("TRUSTED_PROXIES") else set()
 
 
 def client_ip(req: Request) -> str:
-    """取真实客户端 IP（支持反代）。"""
-    fwd = req.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",")[0].strip()
-    return req.client.host if req.client else "0.0.0.0"
+    """取真实客户端 IP。
+
+    安全策略：默认只使用直连 IP（req.client.host），拒绝任何可伪造的 header。
+    仅当直连来源在 TRUSTED_PROXIES 白名单内时，才从 X-Forwarded-For 取最右侧的值。
+    """
+    direct = req.client.host if req.client else "0.0.0.0"
+    if direct in TRUSTED_PROXIES:
+        fwd = req.headers.get("x-forwarded-for")
+        if fwd:
+            # 取最右侧（最靠近本代理的那一跳），避免客户端伪造
+            return fwd.rsplit(",", 1)[-1].strip()
+    return direct
 
 
 def me(req: Request) -> dict:
@@ -266,10 +304,15 @@ class ScoreBody(BaseModel):
 
 
 @app.post("/api/match/{mid}/score")
-def score(mid: str, body: ScoreBody):
+def score(mid: str, body: ScoreBody, req: Request):
     match = store.get_match(mid)
     if not match:
         raise HTTPException(404, "对战不存在")
+    # 鉴权：只有该对战的参与者才能记分
+    user = me(req)
+    bid = match.get("battle_id")
+    if bid and not store.is_player(bid, user["id"]):
+        raise HTTPException(403, "只有对战参与者才能记分")
     if match["status"] == "done" and body.action != "undo":
         if body.action != "reset":
             raise HTTPException(400, "对战已结束")
@@ -432,7 +475,8 @@ def watch_page():
 
 
 @app.get("/admin.html")
-def admin_page():
+def admin_page(req: Request):
+    require_admin(req)
     return FileResponse(os.path.join(ROOT_DIR, "admin.html"))
 
 

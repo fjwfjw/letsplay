@@ -405,6 +405,19 @@
       </div>
     </div>
 
+    <!-- Login Overlay -->
+    <div id="loginOverlay" style="display:none;position:fixed;inset:0;z-index:999;background:var(--bg);align-items:center;justify-content:center;">
+      <div style="width:320px;max-width:90vw;text-align:center;">
+        <div style="font-family:var(--font-display);font-size:28px;color:var(--lime);letter-spacing:2px;margin-bottom:8px;">LET'S PLAY</div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted);margin-bottom:32px;letter-spacing:1px;">ADMIN LOGIN</div>
+        <input type="password" id="tokenInput" placeholder="输入管理密钥"
+          style="width:100%;padding:12px 16px;background:var(--bg-2);border:1px solid var(--line-strong);border-radius:4px;color:var(--fg);font-family:var(--font-mono);font-size:14px;outline:none;margin-bottom:16px;"
+          onkeydown="if(event.key==='Enter')doLogin()" />
+        <div id="loginError" style="color:var(--coral);font-size:12px;margin-bottom:12px;display:none;">密钥错误</div>
+        <button class="btn btn-primary" style="width:100%;" onclick="doLogin()">进入</button>
+      </div>
+    </div>
+
     <!-- Room List -->
     <div class="room-list" id="roomList">
       <div class="loading-bar">加载中…</div>
@@ -412,13 +425,39 @@
   </div>
 
   <script>
+    // ===== Auth =====
+    // 从 URL 参数或 localStorage 获取 admin token
+    function getAdminToken() {
+      const urlToken = new URLSearchParams(location.search).get('token');
+      if (urlToken) {
+        localStorage.setItem('admin_token', urlToken);
+        // 清除 URL 中的 token，避免泄露
+        const url = new URL(location);
+        url.searchParams.delete('token');
+        history.replaceState({}, '', url);
+        return urlToken;
+      }
+      return localStorage.getItem('admin_token') || '';
+    }
+
+    const ADMIN_TOKEN = getAdminToken();
+
     // ===== API =====
     const API_BASE = location.hostname.includes('github.io')
       ? 'https://pve.u2170167.nyat.app:38412'
       : '';
 
     async function fetchBattles() {
-      const res = await fetch(API_BASE + '/api/admin/battles');
+      const res = await fetch(API_BASE + '/api/admin/battles', {
+        headers: { 'X-Admin-Token': ADMIN_TOKEN },
+      });
+      if (res.status === 403) {
+        showLogin();
+        throw new Error('认证失败');
+      }
+      if (res.status === 503) {
+        throw new Error('Admin 功能未启用');
+      }
       if (!res.ok) throw new Error('请求失败');
       return res.json();
     }
@@ -584,6 +623,32 @@
 
     load();
     setInterval(tick, 1000);
+
+    // ===== Login =====
+    function showLogin() {
+      const overlay = document.getElementById('loginOverlay');
+      overlay.style.display = 'flex';
+      document.getElementById('tokenInput').focus();
+    }
+
+    async function doLogin() {
+      const token = document.getElementById('tokenInput').value.trim();
+      if (!token) return;
+      // 验证 token
+      try {
+        const res = await fetch(API_BASE + '/api/admin/battles', {
+          headers: { 'X-Admin-Token': token },
+        });
+        if (res.ok) {
+          localStorage.setItem('admin_token', token);
+          location.reload();
+        } else {
+          document.getElementById('loginError').style.display = 'block';
+        }
+      } catch {
+        document.getElementById('loginError').style.display = 'block';
+      }
+    }
   </script>
 </body>
 </html>

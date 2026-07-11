@@ -1,2 +1,6 @@
 tmp-homepage2/
 .DS_Store
+
+# 日志和进程文件
+*.log
+*.pid

@@ -160,6 +160,24 @@ def api_me(req: Request):
     return me(req)
 
 
+class NicknameBody(BaseModel):
+    nickname: str
+
+
+@app.put("/api/me/nickname")
+def update_nickname(body: NicknameBody, req: Request):
+    nick = body.nickname.strip()
+    if not nick:
+        raise HTTPException(400, "昵称不能为空")
+    if len(nick) > 20:
+        raise HTTPException(400, "昵称最多 20 个字符")
+    user = me(req)
+    updated = store.update_nickname(user["id"], nick)
+    if not updated:
+        raise HTTPException(404, "用户不存在")
+    return updated
+
+
 # ---------- 对战房间列表 ----------
 @app.get("/api/battles")
 def list_battles(req: Request):

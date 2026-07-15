@@ -58,8 +58,7 @@ function render(data) {
   window._battleType = battle.type;  // 供组队函数使用
 
   // 顶栏用户
-  const chip = $('#userChip');
-  chip.innerHTML = `<div class="ava">${user.avatar}</div><span class="name">${user.nickname}</span>`;
+  applyUserToChip(user);
 
   // 状态条
   $('#pCount').textContent = players.length;

@@ -57,6 +57,15 @@ class Store:
             "ip": data.get("ip", ""),
         }
 
+    def update_nickname(self, uid: str, nickname: str) -> dict:
+        """更新用户昵称。"""
+        key = f"user:{uid}"
+        if not self.r.exists(key):
+            return None
+        self.r.hset(key, "nickname", nickname)
+        self.r.expire(key, USER_TTL)
+        return self.get_user(uid)
+
     # ---------- 对战 ----------
     def check_create_limit(self, ip: str) -> bool:
         """检查单个 IP 在 8h 窗口内是否可继续建赛（只读，不修改计数）。"""

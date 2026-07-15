@@ -24,13 +24,13 @@ function renderBoard(data) {
   // 顶栏 - 显示当前用户（异步取自己的身份）
   API.me().then(me => {
     if (me && me.id) {
-      $('#userChip').innerHTML = `<div class="ava">${me.avatar}</div><span class="name">${me.nickname}</span>`;
+      applyUserToChip(me);
     } else if (players.length) {
-      $('#userChip').innerHTML = `<div class="ava">${players[0].avatar}</div><span class="name">${players[0].nickname}</span>`;
+      applyUserToChip(players[0]);
     }
   }).catch(() => {
     if (players.length) {
-      $('#userChip').innerHTML = `<div class="ava">${players[0].avatar}</div><span class="name">${players[0].nickname}</span>`;
+      applyUserToChip(players[0]);
     }
   });
   $('#typeTag').textContent = battle.type === 'singles' ? '单打 1v1' : '双打 2v2';

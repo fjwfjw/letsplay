@@ -141,6 +141,87 @@ input, select { font-family: inherit; }
   font-weight: 500;
   letter-spacing: 0.3px;
 }
+.user-chip.editable {
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+}
+.user-chip.editable:hover { border-color: var(--lime); }
+.user-chip .edit-pen {
+  color: var(--muted);
+  transition: color .2s;
+  flex-shrink: 0;
+}
+.user-chip.editable:hover .edit-pen { color: var(--lime); }
+
+/* 昵称编辑弹窗 */
+.nick-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity .25s;
+  padding: 20px;
+}
+.nick-overlay.show { opacity: 1; }
+.nick-modal {
+  width: 100%;
+  max-width: 340px;
+  background: linear-gradient(180deg, var(--bg-1), var(--bg-2));
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  padding: 28px 24px 24px;
+  text-align: center;
+  box-shadow: var(--shadow-card);
+  transform: translateY(16px);
+  transition: transform .25s;
+}
+.nick-overlay.show .nick-modal { transform: translateY(0); }
+.nick-modal-title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--lime);
+  margin-bottom: 18px;
+}
+.nick-modal-ava {
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  overflow: hidden;
+  margin: 0 auto 18px;
+  border: 2px solid var(--line-strong);
+}
+.nick-modal-ava svg { width: 100%; height: 100%; display: block; }
+.nick-input {
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  color: var(--fg);
+  font-size: 15px;
+  font-weight: 500;
+  outline: none;
+  transition: border-color .2s;
+}
+.nick-input:focus { border-color: var(--lime); }
+.nick-modal-hint {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  margin-top: 8px;
+  text-align: left;
+}
+.nick-modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+.nick-modal-actions .btn { flex: 1; }
 
 /* ============================================================
    英雄 / 标题

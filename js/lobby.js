@@ -323,7 +323,7 @@ function renderTeamsUI(battle, players) {
   }
 
   // 更新提示
-  $('#teamsHint').textContent = per === 1 ? '单打：每队 1 人 · 拖拽分配或点击' : '双打：每队 2 人 · 拖拽分配或点击';
+  $('#teamsHint').textContent = per === 1 ? '单打：每队 1 人 · 长按拖拽分配或点击' : '双打：每队 2 人 · 长按拖拽分配或点击';
 }
 
 // 创建玩家元素（可拖拽）

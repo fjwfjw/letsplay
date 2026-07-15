@@ -392,3 +392,6 @@ if (_brand) {
 // 启动轮询
 refresh();
 pollTimer = setInterval(refresh, 2500);
+
+// 昵称修改后立即刷新页面数据
+function onNicknameUpdated() { refresh(); }

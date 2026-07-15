@@ -321,3 +321,6 @@ if (_brand) {
 
 loadMatches();
 pollTimer = setInterval(loadMatches, 5000);
+
+// 昵称修改后立即刷新页面数据
+function onNicknameUpdated() { loadMatches(); }

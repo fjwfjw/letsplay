@@ -96,6 +96,7 @@ input, select { font-family: inherit; }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   /* 顶部安全距离由 html, body 的 padding-top 统一提供 */
   padding-bottom: 24px;
   border-bottom: 1px solid var(--line);
@@ -105,6 +106,7 @@ input, select { font-family: inherit; }
   display: flex;
   align-items: baseline;
   gap: 10px;
+  flex-shrink: 0;
 }
 .brand .mark {
   font-family: var(--font-display);
@@ -123,11 +125,13 @@ input, select { font-family: inherit; }
 .user-chip {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 6px 12px 6px 6px;
   border: 1px solid var(--line-strong);
   border-radius: 100px;
   background: var(--bg-1);
+  flex-shrink: 0;
+  max-width: 50vw;
 }
 .user-chip .ava {
   width: 30px; height: 30px;
@@ -140,6 +144,9 @@ input, select { font-family: inherit; }
   font-size: 13px;
   font-weight: 500;
   letter-spacing: 0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .user-chip.editable {
   cursor: pointer;
@@ -630,6 +637,18 @@ input, select { font-family: inherit; }
   color: var(--muted);
 }
 .player.host .role { color: var(--lime); }
+
+/* 拖拽 */
+.player.draggable { cursor: grab; transition: border-color .2s, opacity .15s; }
+.player.draggable:hover { border-color: var(--lime); }
+.player.draggable:active { cursor: grabbing; }
+.player.dragging { opacity: 0.4; }
+.drop-zone { transition: background .15s, border-color .15s; }
+.drop-zone.drag-over {
+  background: rgba(212, 255, 58, 0.08);
+  border-color: var(--lime);
+  border-style: dashed;
+}
 
 .count-pill {
   display: inline-flex;
@@ -1133,6 +1152,13 @@ input, select { font-family: inherit; }
   .match-row .score-btn { grid-column: 1 / -1; }
   .hero .orbit { display: none; }
   .score-foot { flex-wrap: wrap; }
+  /* 顶栏紧凑化 */
+  .brand .sub { display: none; }
+  .brand .mark { font-size: 22px; letter-spacing: 1px; }
+  .user-chip { padding: 4px 10px 4px 4px; gap: 6px; }
+  .user-chip .ava { width: 26px; height: 26px; }
+  .user-chip .name { font-size: 12px; max-width: 80px; }
+  .user-chip .edit-pen { display: none; }
 }
 
 /* 加载占位 */

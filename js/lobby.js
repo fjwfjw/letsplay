@@ -254,16 +254,23 @@ function renderTeamsUI(battle, players) {
   $('#poolCount').textContent = pool.length;
   const poolEl = $('#playerPool');
   poolEl.innerHTML = '';
+  poolEl.classList.add('drop-zone');
+  poolEl.ondragover = (e) => { e.preventDefault(); poolEl.classList.add('drag-over'); };
+  poolEl.ondragleave = () => poolEl.classList.remove('drag-over');
+  poolEl.ondrop = (e) => {
+    e.preventDefault();
+    poolEl.classList.remove('drag-over');
+    const uid = e.dataTransfer.getData('text/plain');
+    if (uid) {
+      removeFromTeam(uid);
+      renderTeamsUI({ type: window._battleType }, playersCache);
+    }
+  };
   if (pool.length === 0) {
     poolEl.innerHTML = '<div class="muted" style="padding:8px;font-size:13px;">所有玩家已分配</div>';
   } else {
     pool.forEach(p => {
-      const el = document.createElement('div');
-      el.className = 'player';
-      el.innerHTML = `<div class="ava">${p.avatar}</div><div class="meta"><div class="nick">${p.nickname}</div></div>`;
-      // 点击：分配到第一个有空位的队伍
-      el.style.cursor = 'pointer';
-      el.addEventListener('click', () => assignToFirstTeam(p.id));
+      const el = createPlayerEl(p, false);
       poolEl.appendChild(el);
     });
   }
@@ -278,7 +285,7 @@ function renderTeamsUI(battle, players) {
     const memberPlayers = members.map(uid => players.find(p => p.id === uid)).filter(Boolean);
     const full = members.length >= per;
     const wrap = document.createElement('div');
-    wrap.className = 'panel';
+    wrap.className = 'panel team-slot';
     wrap.style.marginBottom = '12px';
     wrap.style.borderLeft = `4px solid ${colors[i % colors.length]}`;
     wrap.innerHTML = `
@@ -289,15 +296,26 @@ function renderTeamsUI(battle, players) {
       <div class="players" data-tid="${tid}"></div>
     `;
     const memberWrap = wrap.querySelector('.players');
+    memberWrap.classList.add('drop-zone');
+    // 拖拽放置
+    memberWrap.ondragover = (e) => {
+      e.preventDefault();
+      memberWrap.classList.add('drag-over');
+    };
+    memberWrap.ondragleave = () => memberWrap.classList.remove('drag-over');
+    memberWrap.ondrop = (e) => {
+      e.preventDefault();
+      memberWrap.classList.remove('drag-over');
+      const uid = e.dataTransfer.getData('text/plain');
+      if (uid) {
+        assignToTeam(uid, tid);
+      }
+    };
     if (memberPlayers.length === 0) {
-      memberWrap.innerHTML = '<div class="muted" style="padding:6px;font-size:12px;">空位</div>';
+      memberWrap.innerHTML = '<div class="muted" style="padding:6px;font-size:12px;">拖拽玩家到此处</div>';
     } else {
       memberPlayers.forEach(p => {
-        const el = document.createElement('div');
-        el.className = 'player';
-        el.innerHTML = `<div class="ava">${p.avatar}</div><div class="meta"><div class="nick">${p.nickname}</div></div>`;
-        el.style.cursor = 'pointer';
-        el.addEventListener('click', () => removeFromTeam(p.id));
+        const el = createPlayerEl(p, true);
         memberWrap.appendChild(el);
       });
     }
@@ -305,7 +323,49 @@ function renderTeamsUI(battle, players) {
   }
 
   // 更新提示
-  $('#teamsHint').textContent = per === 1 ? '单打：每队 1 人' : '双打：每队 2 人';
+  $('#teamsHint').textContent = per === 1 ? '单打：每队 1 人 · 拖拽分配或点击' : '双打：每队 2 人 · 拖拽分配或点击';
+}
+
+// 创建玩家元素（可拖拽）
+function createPlayerEl(p, inTeam) {
+  const el = document.createElement('div');
+  el.className = 'player draggable';
+  el.draggable = true;
+  el.dataset.uid = p.id;
+  el.innerHTML = `<div class="ava">${p.avatar}</div><div class="meta"><div class="nick">${p.nickname}</div></div>`;
+  el.style.cursor = 'grab';
+  // 拖拽
+  el.ondragstart = (e) => {
+    e.dataTransfer.setData('text/plain', p.id);
+    e.dataTransfer.effectAllowed = 'move';
+    el.classList.add('dragging');
+  };
+  el.ondragend = () => el.classList.remove('dragging');
+  // 点击：池中->分配到第一个有空位的队伍；队伍中->移出
+  el.addEventListener('click', () => {
+    if (inTeam) {
+      removeFromTeam(p.id);
+    } else {
+      assignToFirstTeam(p.id);
+    }
+  });
+  return el;
+}
+
+// 分配玩家到指定队伍
+function assignToTeam(uid, tid) {
+  const per = perTeamSize({ type: window._battleType || 'singles' });
+  // 先从其他队伍移除
+  removeFromTeam(uid);
+  const members = teamsState[tid] || [];
+  if (members.length >= per) {
+    toast('该队伍已满');
+    renderTeamsUI({ type: window._battleType }, playersCache);
+    return;
+  }
+  members.push(uid);
+  teamsState[tid] = members;
+  renderTeamsUI({ type: window._battleType }, playersCache);
 }
 
 function assignToFirstTeam(uid) {

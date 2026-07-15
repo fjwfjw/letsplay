@@ -223,6 +223,39 @@ input, select { font-family: inherit; }
 }
 .nick-modal-actions .btn { flex: 1; }
 
+/* 性别选择 */
+.nick-gender-label {
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 16px;
+  margin-bottom: 8px;
+  text-align: left;
+}
+.nick-gender-row {
+  display: flex;
+  gap: 8px;
+}
+.nick-gender-btn {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg-dim);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  transition: all .15s;
+}
+.nick-gender-btn:hover { border-color: var(--lime); color: var(--lime); }
+.nick-gender-btn.selected {
+  background: var(--lime);
+  color: #07090f;
+  border-color: var(--lime);
+}
+
 /* ============================================================
    英雄 / 标题
    ============================================================ */
@@ -466,6 +499,16 @@ input, select { font-family: inherit; }
   background: var(--lime);
   color: #07090f;
   border-color: var(--lime);
+}
+.chip.custom-chip { letter-spacing: 0.5px; font-size: 13px; }
+.chip.custom-input {
+  -moz-appearance: textfield;
+  font-family: var(--font-mono);
+}
+.chip.custom-input::-webkit-outer-spin-button,
+.chip.custom-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 /* ============================================================

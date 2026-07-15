@@ -13,7 +13,7 @@
   <title>对战大厅 · LET'S PLAY</title>
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
   <link rel="apple-touch-icon" href="apple-touch-icon-180x180.png" />
-  <link rel="stylesheet" href="css/style.css?v=8" />
+  <link rel="stylesheet" href="css/style.css?v=9" />
 </head>
 <body>
   <div class="shell">
@@ -77,6 +77,15 @@
           <div class="desc">自己组队，按自定义队伍对战</div>
           <div class="check">✓</div>
         </div>
+      </div>
+
+      <!-- 性别规则（仅随机分配时可见） -->
+      <div class="hidden" id="genderRulePanel" style="margin-top:18px;">
+        <div class="field-label" style="margin-bottom:10px;">
+          <span class="name">性别规则</span>
+          <span class="val muted" id="genderRuleHint" style="font-size:11px;letter-spacing:0.5px;">人數不足時自動降級為普通</span>
+        </div>
+        <div class="chip-row" id="genderRuleChips"></div>
       </div>
 
       <!-- 自由组队面板 -->

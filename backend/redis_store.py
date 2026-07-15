@@ -38,6 +38,7 @@ class Store:
                 "id": uid,
                 "nickname": ident["nickname"],
                 "avatar": ident["avatar"],
+                "gender": "unknown",
                 "ip": ip,
                 "created_at": int(time.time()),
             })
@@ -54,15 +55,22 @@ class Store:
             "id": data["id"],
             "nickname": data["nickname"],
             "avatar": data["avatar"],
+            "gender": data.get("gender", "unknown"),
             "ip": data.get("ip", ""),
         }
 
-    def update_nickname(self, uid: str, nickname: str) -> dict:
-        """更新用户昵称。"""
+    def update_profile(self, uid: str, nickname: str = None, gender: str = None) -> dict:
+        """更新用户昵称和/或性别。"""
         key = f"user:{uid}"
         if not self.r.exists(key):
             return None
-        self.r.hset(key, "nickname", nickname)
+        mapping = {}
+        if nickname is not None:
+            mapping["nickname"] = nickname
+        if gender is not None:
+            mapping["gender"] = gender
+        if mapping:
+            self.r.hset(key, mapping=mapping)
         self.r.expire(key, USER_TTL)
         return self.get_user(uid)
 
@@ -84,7 +92,8 @@ class Store:
         self.r.expire(key, CREATE_LIMIT_WINDOW)
 
     def create_battle(self, creator_uid: str, match_type: str, max_players: int, total_matches: int,
-                      best_of: int = 3, game_point: int = 21, assign_mode: str = "random") -> dict:
+                      best_of: int = 3, game_point: int = 21, assign_mode: str = "random",
+                      gender_rule: str = "none") -> dict:
         bid = uuid.uuid4().hex[:8]
         now = int(time.time())
         self.r.hset(f"battle:{bid}", mapping={
@@ -95,6 +104,7 @@ class Store:
             "best_of": str(best_of),
             "game_point": str(game_point),
             "assign_mode": assign_mode,  # random | free
+            "gender_rule": gender_rule,  # none | mixed | separated
             "status": "waiting",  # waiting | ongoing | finished
             "creator_id": creator_uid,
             "created_at": str(now),
@@ -113,6 +123,7 @@ class Store:
         data["best_of"] = int(data.get("best_of", "3"))
         data["game_point"] = int(data.get("game_point", "21"))
         data["assign_mode"] = data.get("assign_mode", "random")  # 兼容旧数据
+        data["gender_rule"] = data.get("gender_rule", "none")  # 兼容旧数据
         # 活跃对战访问即续期；已结束的保持短 TTL 不续
         if data["status"] != "finished":
             self._refresh_battle_ttl(bid, BATTLE_TTL)
@@ -148,6 +159,18 @@ class Store:
         if mode not in ("random", "free"):
             raise ValueError("模式必须为 random 或 free")
         self.r.hset(f"battle:{bid}", "assign_mode", mode)
+        return self.get_battle(bid)
+
+    def set_gender_rule(self, bid: str, rule: str) -> dict:
+        """设置对战性别规则（仅 waiting 状态可改）。"""
+        battle = self.get_battle(bid)
+        if not battle:
+            raise ValueError("对战不存在")
+        if battle["status"] != "waiting":
+            raise ValueError("对战已开始，无法修改性别规则")
+        if rule not in ("none", "mixed", "separated"):
+            raise ValueError("性别规则必须为 none | mixed | separated")
+        self.r.hset(f"battle:{bid}", "gender_rule", rule)
         return self.get_battle(bid)
 
     def set_teams(self, bid: str, teams: dict) -> dict:
@@ -204,7 +227,17 @@ class Store:
                     raise ValueError(f"每支队伍需 {per_team} 人")
             matches = generate_free_matches(teams, battle["total_matches"], seed)
         else:
-            matches = generate_matches(players_uids, battle["type"], battle["total_matches"], seed)
+            gender_rule = battle.get("gender_rule", "none")
+            # 构建性别映射
+            gender_map = {}
+            if gender_rule != "none":
+                for uid in players_uids:
+                    user = self.get_user(uid)
+                    gender_map[uid] = user.get("gender", "unknown") if user else "unknown"
+            result = generate_matches(players_uids, battle["type"], battle["total_matches"], seed,
+                                      gender_rule=gender_rule, gender_map=gender_map)
+            matches = result["matches"]
+            self._gender_fallback = result.get("fallback", False)
 
         pipe = self.r.pipeline()
         pipe.hset(f"battle:{bid}", "status", "ongoing")
@@ -233,7 +266,7 @@ class Store:
         pipe.expire(f"battle:{bid}:matches", BATTLE_TTL)
         pipe.execute()
         self._refresh_battle_ttl(bid, BATTLE_TTL)
-        return self.get_matches(bid)
+        return {"matches": self.get_matches(bid), "gender_fallback": getattr(self, "_gender_fallback", False)}
 
     def get_matches(self, bid: str) -> list:
         mids = self.r.lrange(f"battle:{bid}:matches", 0, -1)
@@ -362,6 +395,7 @@ class Store:
                 "best_of": battle["best_of"],
                 "game_point": battle["game_point"],
                 "assign_mode": battle.get("assign_mode", "random"),
+                "gender_rule": battle.get("gender_rule", "none"),
                 "status": battle["status"],
                 "creator_id": battle["creator_id"],
                 "created_at": int(battle["created_at"]),
@@ -399,6 +433,7 @@ class Store:
                 "best_of": battle["best_of"],
                 "game_point": battle["game_point"],
                 "assign_mode": battle.get("assign_mode", "random"),
+                "gender_rule": battle.get("gender_rule", "none"),
                 "status": battle["status"],
                 "creator": creator,
                 "created_at": int(battle["created_at"]),

@@ -20,10 +20,13 @@ const API = {
     return data;
   },
   me() { return this._fetch('/api/me'); },
-  updateNickname(nickname) {
-    return this._fetch('/api/me/nickname', {
+  updateProfile(nickname, gender) {
+    const body = {};
+    if (nickname !== undefined) body.nickname = nickname;
+    if (gender !== undefined) body.gender = gender;
+    return this._fetch('/api/me/profile', {
       method: 'PUT',
-      body: JSON.stringify({ nickname }),
+      body: JSON.stringify(body),
     });
   },
   listBattles() { return this._fetch('/api/battles'); },
@@ -42,6 +45,11 @@ const API = {
   setAssignMode(bid, mode) {
     return this._fetch(`/api/battle/${bid}/assign-mode`, {
       method: 'POST', body: JSON.stringify({ mode }),
+    });
+  },
+  setGenderRule(bid, rule) {
+    return this._fetch(`/api/battle/${bid}/gender-rule`, {
+      method: 'POST', body: JSON.stringify({ rule }),
     });
   },
   setTeams(bid, teams) {
@@ -120,10 +128,15 @@ function openNicknameEditor(user) {
   overlay.className = 'nick-overlay';
   overlay.innerHTML = `
     <div class="nick-modal">
-      <div class="nick-modal-title">修改昵称</div>
+      <div class="nick-modal-title">个人资料</div>
       <div class="nick-modal-ava">${avatarHTML(user.avatar)}</div>
       <input class="nick-input" type="text" maxlength="20" placeholder="输入新昵称" />
       <div class="nick-modal-hint">最多 20 个字符</div>
+      <div class="nick-gender-label">性别（用于混双/分性别分配）</div>
+      <div class="nick-gender-row">
+        <button class="nick-gender-btn" data-gender="male">男</button>
+        <button class="nick-gender-btn" data-gender="female">女</button>
+      </div>
       <div class="nick-modal-actions">
         <button class="btn btn-ghost nick-cancel">取消</button>
         <button class="btn btn-primary nick-save">保存</button>
@@ -141,6 +154,22 @@ function openNicknameEditor(user) {
   input.focus();
   input.select();
 
+  // 性别选择
+  let selectedGender = user.gender || 'unknown';
+  $$('.nick-gender-btn', overlay).forEach(btn => {
+    if (btn.dataset.gender === selectedGender) btn.classList.add('selected');
+    btn.addEventListener('click', () => {
+      $$('.nick-gender-btn', overlay).forEach(b => b.classList.remove('selected'));
+      // 再次点击已选中的 -> 取消选择
+      if (selectedGender === btn.dataset.gender) {
+        selectedGender = 'unknown';
+      } else {
+        selectedGender = btn.dataset.gender;
+        btn.classList.add('selected');
+      }
+    });
+  });
+
   const close = () => {
     overlay.classList.remove('show');
     document.body.style.overflow = '';
@@ -154,22 +183,31 @@ function openNicknameEditor(user) {
   saveBtn.onclick = async () => {
     const nick = input.value.trim();
     if (!nick) { toast('昵称不能为空', true); return; }
-    if (nick === user.nickname) { close(); return; }
+    const genderChanged = selectedGender !== (user.gender || 'unknown');
+    const nickChanged = nick !== user.nickname;
+    if (!nickChanged && !genderChanged) { close(); return; }
     saveBtn.disabled = true;
     saveBtn.textContent = '保存中…';
     try {
-      const updated = await API.updateNickname(nick);
+      const updated = await API.updateProfile(
+        nickChanged ? nick : undefined,
+        genderChanged ? selectedGender : undefined
+      );
       // 更新 chip 显示
       const chip = $('#userChip');
       if (chip) {
         const nameEl = $('.name', chip);
         if (nameEl) nameEl.textContent = updated.nickname;
+        // 更新 user 对象供下次编辑使用
+        user.nickname = updated.nickname;
+        user.gender = updated.gender;
       }
       // 更新全局 currentUser（如果存在）
       if (typeof currentUser !== 'undefined' && currentUser) {
         currentUser.nickname = updated.nickname;
+        currentUser.gender = updated.gender;
       }
-      toast('昵称已更新');
+      toast('资料已更新');
       close();
       // 通知页面刷新（如果页面定义了 onNicknameUpdated 回调）
       if (typeof onNicknameUpdated === 'function') onNicknameUpdated(updated);

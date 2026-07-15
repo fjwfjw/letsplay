@@ -144,6 +144,7 @@ function render(data) {
 let teamsState = {};      // {team_0: [uid,...], ...}
 let teamCount = 2;        // 当前队伍数量
 let localMode = null;     // 本地缓存的模式，避免轮询覆盖用户操作
+let localGenderRule = null; // 本地缓存的性别规则
 let playersCache = [];    // 缓存玩家列表
 
 function perTeamSize(battle) {
@@ -174,6 +175,17 @@ function syncAssignUI(battle, players, serverTeams) {
   // 显示/隐藏组队面板
   $('#teamsPanel').classList.toggle('hidden', localMode !== 'free');
 
+  // 性别规则面板（仅随机分配时可见）
+  const genderRule = battle.gender_rule || 'none';
+  if (localGenderRule === null) localGenderRule = genderRule;
+  const grPanel = $('#genderRulePanel');
+  if (localMode === 'random') {
+    grPanel.classList.remove('hidden');
+    buildGenderRuleChips(battle.type);
+  } else {
+    grPanel.classList.add('hidden');
+  }
+
   if (localMode === 'free') {
     // 同步队伍状态（首次或服务端有数据时）
     if (Object.keys(teamsState).length === 0 && serverTeams && Object.keys(serverTeams).length > 0) {
@@ -182,6 +194,38 @@ function syncAssignUI(battle, players, serverTeams) {
     }
     renderTeamsUI(battle, players);
   }
+}
+
+function buildGenderRuleChips(battleType) {
+  const wrap = $('#genderRuleChips');
+  if (!wrap) return;
+  const options = battleType === 'doubles'
+    ? [{ value: 'none', label: '双打' }, { value: 'mixed', label: '混双' }]
+    : [{ value: 'none', label: '单打' }, { value: 'separated', label: '分性别' }];
+  wrap.innerHTML = '';
+  options.forEach(opt => {
+    const c = document.createElement('div');
+    c.className = 'chip' + (opt.value === localGenderRule ? ' selected' : '');
+    c.textContent = opt.label;
+    c.style.minWidth = '70px';
+    c.addEventListener('click', async () => {
+      if (opt.value === localGenderRule) return;
+      localGenderRule = opt.value;
+      // 高亮
+      $$('#genderRuleChips .chip').forEach(b => b.classList.remove('selected'));
+      c.classList.add('selected');
+      try {
+        await API.setGenderRule(BID, opt.value);
+        toast(opt.value === 'none' ? '已切换为普通模式' : `已切换为${opt.label}`);
+      } catch (e) {
+        toast(e.message, true);
+        // 回滚
+        localGenderRule = opt.value === 'none' ? 'mixed' : 'none';
+        buildGenderRuleChips(battleType);
+      }
+    });
+    wrap.appendChild(c);
+  });
 }
 
 function renderTeamsUI(battle, players) {
@@ -299,9 +343,12 @@ $$('#assignGrid .type-card').forEach(card => {
       toast(mode === 'free' ? '已切换为自由对战，请组队' : '已切换为随机分配');
       if (mode === 'free') {
         $('#teamsPanel').classList.remove('hidden');
+        $('#genderRulePanel').classList.add('hidden');
         renderTeamsUI({ type: window._battleType }, playersCache);
       } else {
         $('#teamsPanel').classList.add('hidden');
+        $('#genderRulePanel').classList.remove('hidden');
+        buildGenderRuleChips(window._battleType);
       }
     } catch (e) {
       toast(e.message, true);
@@ -372,9 +419,13 @@ $('#startBtn').addEventListener('click', async () => {
     if (localMode === 'free') {
       await API.setTeams(BID, teamsState);
     }
-    await API.startBattle(BID);
-    toast('对战开始！');
-    setTimeout(() => { location.href = `matches.html?id=${BID}`; }, 400);
+    const res = await API.startBattle(BID);
+    if (res.gender_fallback) {
+      toast('性别人数不足，已自动降级为普通分配', true);
+    } else {
+      toast('对战开始！');
+    }
+    setTimeout(() => { location.href = `matches.html?id=${BID}`; }, 1000);
   } catch (e) {
     toast(e.message, true);
     btn.disabled = false;

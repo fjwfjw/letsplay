@@ -10,7 +10,8 @@ from itertools import combinations
 from typing import List
 
 
-def generate_matches(players: List[str], match_type: str, num_matches: int, seed: int = None) -> List[dict]:
+def generate_matches(players: List[str], match_type: str, num_matches: int, seed: int = None,
+                      gender_rule: str = "none", gender_map: dict = None) -> dict:
     """生成对战列表。
 
     Args:
@@ -18,18 +19,44 @@ def generate_matches(players: List[str], match_type: str, num_matches: int, seed
         match_type: "singles" | "doubles"
         num_matches: 对战场数
         seed: 随机种子（用于可复现）
+        gender_rule: "none" | "mixed" | "separated"
+        gender_map: {uid: "male"|"female"|"unknown"} 性别映射
 
     Returns:
-        [{"index": 0, "team_a": [pid,...], "team_b": [pid,...]}, ...]
+        {"matches": [...], "fallback": bool}
     """
     rng = random.Random(seed)
     players = list(players)
     if len(players) < (2 if match_type == "singles" else 4):
-        return []
+        return {"matches": [], "fallback": False}
 
+    fallback = False
+
+    if gender_rule == "mixed" and match_type == "doubles":
+        # 检查是否有足够的已知性别玩家（至少 2男 2女）
+        males = [p for p in players if gender_map.get(p) == "male"]
+        females = [p for p in players if gender_map.get(p) == "female"]
+        if len(males) >= 2 and len(females) >= 2:
+            matches = _mixed_doubles(players, num_matches, rng, gender_map)
+            return {"matches": matches, "fallback": False}
+        else:
+            fallback = True
+
+    elif gender_rule == "separated" and match_type == "singles":
+        males = [p for p in players if gender_map.get(p) == "male"]
+        females = [p for p in players if gender_map.get(p) == "female"]
+        if len(males) >= 2 and len(females) >= 2:
+            matches = _gender_separated_singles(players, num_matches, rng, gender_map)
+            return {"matches": matches, "fallback": False}
+        else:
+            fallback = True
+
+    # 默认或降级：普通分配
     if match_type == "singles":
-        return _singles(players, num_matches, rng)
-    return _doubles(players, num_matches, rng)
+        matches = _singles(players, num_matches, rng)
+    else:
+        matches = _doubles(players, num_matches, rng)
+    return {"matches": matches, "fallback": fallback}
 
 
 def _singles(players, num_matches, rng):
@@ -96,6 +123,85 @@ def _doubles(players, num_matches, rng):
         for x in t1:
             for y in t2:
                 opponent[frozenset((x, y))] += 1
+
+    return matches
+
+
+def _mixed_doubles(players, num_matches, rng, gender_map):
+    """混双：每队 1男+1女。基于出场次数均匀挑选。"""
+    males = [p for p in players if gender_map.get(p) == "male"]
+    females = [p for p in players if gender_map.get(p) == "female"]
+    appearances = {p: 0 for p in players}
+    teammate = {frozenset((a, b)): 0 for a, b in combinations(males + females, 2)}
+    opponent = {frozenset((a, b)): 0 for a, b in combinations(males + females, 2)}
+    matches = []
+
+    for i in range(num_matches):
+        # 按出场次数挑 2 男 2 女
+        m_pool = sorted(males, key=lambda p: (appearances[p], rng.random()))
+        f_pool = sorted(females, key=lambda p: (appearances[p], rng.random()))
+        m2 = m_pool[:2]
+        f2 = f_pool[:2]
+
+        # 2男2女配成 (M1+F1) vs (M2+F2) 或 (M1+F2) vs (M2+F1)
+        best, best_score = None, float("inf")
+        for (mi, fi) in [(0, 0), (0, 1)]:
+            t1 = frozenset((m2[mi], f2[fi]))
+            t2 = frozenset((m2[1 - mi], f2[1 - fi]))
+            s = teammate[t1] * 5 + teammate[t2] * 5
+            for x in t1:
+                for y in t2:
+                    s += opponent[frozenset((x, y))]
+            if s < best_score:
+                best_score, best = s, (t1, t2)
+        t1, t2 = best
+        matches.append({"index": i, "team_a": sorted(t1), "team_b": sorted(t2)})
+        for p in m2 + f2:
+            appearances[p] += 1
+        teammate[t1] += 1
+        teammate[t2] += 1
+        for x in t1:
+            for y in t2:
+                opponent[frozenset((x, y))] += 1
+
+    return matches
+
+
+def _gender_separated_singles(players, num_matches, rng, gender_map):
+    """分性别单打：男vs男、女vs女，交替安排保证均匀。"""
+    males = [p for p in players if gender_map.get(p) == "male"]
+    females = [p for p in players if gender_map.get(p) == "female"]
+    appearances = {p: 0 for p in players}
+    opponent = {frozenset((a, b)): 0 for a, b in combinations(players, 2)}
+    matches = []
+
+    # 交替从男女池中取比赛
+    for i in range(num_matches):
+        # 轮流：偶数场优先男，奇数场优先女
+        first, second = (males, females) if i % 2 == 0 else (females, males)
+        picked = None
+        for pool in (first, second):
+            if len(pool) < 2:
+                continue
+            p_pool = sorted(pool, key=lambda p: (appearances[p], rng.random()))
+            head = p_pool[:min(len(pool), 6)]
+            best, best_score = None, float("inf")
+            for a, b in combinations(head, 2):
+                s = opponent[frozenset((a, b))] * 10 + appearances[a] + appearances[b]
+                if s < best_score:
+                    best_score, best = s, (a, b)
+            if best:
+                picked = best
+                break
+        if not picked:
+            # 回退：从所有人中选
+            all_pool = sorted(players, key=lambda p: (appearances[p], rng.random()))
+            picked = (all_pool[0], all_pool[1])
+        a, b = picked
+        matches.append({"index": i, "team_a": [a], "team_b": [b]})
+        appearances[a] += 1
+        appearances[b] += 1
+        opponent[frozenset((a, b))] += 1
 
     return matches
 

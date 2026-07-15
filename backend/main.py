@@ -160,19 +160,24 @@ def api_me(req: Request):
     return me(req)
 
 
-class NicknameBody(BaseModel):
-    nickname: str
+class ProfileBody(BaseModel):
+    nickname: str = None
+    gender: str = None  # male | female | unknown
 
 
-@app.put("/api/me/nickname")
-def update_nickname(body: NicknameBody, req: Request):
-    nick = body.nickname.strip()
-    if not nick:
-        raise HTTPException(400, "昵称不能为空")
-    if len(nick) > 20:
-        raise HTTPException(400, "昵称最多 20 个字符")
+@app.put("/api/me/profile")
+def update_profile(body: ProfileBody, req: Request):
     user = me(req)
-    updated = store.update_nickname(user["id"], nick)
+    nick = body.nickname.strip() if body.nickname else None
+    gender = body.gender.strip() if body.gender else None
+    if nick is not None:
+        if not nick:
+            raise HTTPException(400, "昵称不能为空")
+        if len(nick) > 20:
+            raise HTTPException(400, "昵称最多 20 个字符")
+    if gender is not None and gender not in ("male", "female", "unknown"):
+        raise HTTPException(400, "性别只能为 male、female 或 unknown")
+    updated = store.update_profile(user["id"], nickname=nick, gender=gender)
     if not updated:
         raise HTTPException(404, "用户不存在")
     return updated
@@ -197,6 +202,7 @@ class CreateBody(BaseModel):
     best_of: int = 3      # 局制：1（一局定胜负）或 3（三局两胜）
     game_point: int = 21  # 单局比分制：15 或 21
     assign_mode: str = "random"  # random | free
+    gender_rule: str = "none"  # none | mixed | separated
 
 
 @app.post("/api/battle/create")
@@ -216,13 +222,20 @@ def create_battle(body: CreateBody, req: Request):
         raise HTTPException(400, "比分制只能为 15 或 21")
     if body.assign_mode not in ("random", "free"):
         raise HTTPException(400, "分配模式只能为 random 或 free")
+    if body.gender_rule not in ("none", "mixed", "separated"):
+        raise HTTPException(400, "性别规则只能为 none、mixed 或 separated")
+    # 混双仅双打可用，分性别仅单打可用
+    if body.gender_rule == "mixed" and body.type != "doubles":
+        raise HTTPException(400, "混双仅适用于双打")
+    if body.gender_rule == "separated" and body.type != "singles":
+        raise HTTPException(400, "分性别仅适用于单打")
     user = me(req)
     ip = client_ip(req)
     # 限流：单个 IP 8 小时内最多 3 场对战
     if not store.check_create_limit(ip):
         raise HTTPException(429, "8 小时内创建对战次数已达上限（3 场），请稍后再试")
     battle = store.create_battle(user["id"], body.type, body.max_players, body.total_matches,
-                                 body.best_of, body.game_point, body.assign_mode)
+                                 body.best_of, body.game_point, body.assign_mode, body.gender_rule)
     store.record_create(ip, battle["id"])
     return {"battle": battle, "user": user, "players": store.get_players(battle["id"])}
 
@@ -259,14 +272,20 @@ def join_battle(bid: str, req: Request):
 def start_battle(bid: str, req: Request):
     user = me(req)
     try:
-        store.start_battle(bid, user["id"])
+        result = store.start_battle(bid, user["id"])
     except ValueError as e:
         raise HTTPException(403, str(e))
-    return {"ok": True, "matches": store.get_matches(bid)}
+    matches = result["matches"] if isinstance(result, dict) else result
+    gender_fallback = result.get("gender_fallback", False) if isinstance(result, dict) else False
+    return {"ok": True, "matches": matches, "gender_fallback": gender_fallback}
 
 
 class AssignModeBody(BaseModel):
     mode: str  # random | free
+
+
+class GenderRuleBody(BaseModel):
+    rule: str  # none | mixed | separated
 
 
 @app.post("/api/battle/{bid}/assign-mode")
@@ -279,6 +298,26 @@ def set_assign_mode(bid: str, body: AssignModeBody, req: Request):
         raise HTTPException(403, "仅创建者可修改分配模式")
     try:
         store.set_assign_mode(bid, body.mode)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "battle": store.get_battle(bid)}
+
+
+@app.post("/api/battle/{bid}/gender-rule")
+def set_gender_rule(bid: str, body: GenderRuleBody, req: Request):
+    user = me(req)
+    battle = store.get_battle(bid)
+    if not battle:
+        raise HTTPException(404, "对战不存在")
+    if battle["creator_id"] != user["id"]:
+        raise HTTPException(403, "仅创建者可修改性别规则")
+    # 混双仅双打可用，分性别仅单打可用
+    if body.rule == "mixed" and battle["type"] != "doubles":
+        raise HTTPException(400, "混双仅适用于双打")
+    if body.rule == "separated" and battle["type"] != "singles":
+        raise HTTPException(400, "分性别仅适用于单打")
+    try:
+        store.set_gender_rule(bid, body.rule)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"ok": True, "battle": store.get_battle(bid)}

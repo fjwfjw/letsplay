@@ -28,10 +28,11 @@ function matchOptions() {
   return [3, 4, 6, 8, 10, 12, 16, 20];
 }
 
-// 数字 chips（人数、场数）
-function buildChips(containerId, options, current, key) {
+// 数字 chips（人数、场数），末尾带自定义输入
+function buildChips(containerId, options, current, key, minVal, maxVal) {
   const wrap = $(`#${containerId}`);
   wrap.innerHTML = '';
+  const isCustom = !options.includes(current);
   options.forEach(n => {
     const c = document.createElement('div');
     c.className = 'chip' + (n === current ? ' selected' : '');
@@ -39,10 +40,45 @@ function buildChips(containerId, options, current, key) {
     c.addEventListener('click', () => {
       state[key] = n;
       $(`#${key}Val`).textContent = n;
-      buildChips(containerId, options, n, key);
+      buildChips(containerId, options, n, key, minVal, maxVal);
     });
     wrap.appendChild(c);
   });
+  // 自定义 chip
+  const customChip = document.createElement('div');
+  customChip.className = 'chip custom-chip' + (isCustom ? ' selected' : '');
+  customChip.textContent = isCustom ? current : '自定义';
+  customChip.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.className = 'chip custom-input';
+    input.min = minVal;
+    input.max = maxVal;
+    input.value = current;
+    input.style.width = '60px';
+    input.style.padding = '10px 8px';
+    input.style.textAlign = 'center';
+    customChip.replaceWith(input);
+    input.focus();
+    input.select();
+    const confirm = () => {
+      const v = parseInt(input.value, 10);
+      if (isNaN(v) || v < minVal || v > maxVal) {
+        toast(`请输入 ${minVal}~${maxVal} 之间的数字`, true);
+        buildChips(containerId, options, current, key, minVal, maxVal);
+        return;
+      }
+      state[key] = v;
+      $(`#${key}Val`).textContent = v;
+      buildChips(containerId, options, v, key, minVal, maxVal);
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') confirm();
+      if (e.key === 'Escape') buildChips(containerId, options, current, key, minVal, maxVal);
+    });
+    input.addEventListener('blur', confirm);
+  });
+  wrap.appendChild(customChip);
 }
 
 // 带 label 的 chips（局制、比分制）
@@ -67,10 +103,11 @@ function rebuildPlayerChips() {
   const opts = playerOptions();
   if (!opts.includes(state.players)) state.players = opts[0];
   $(`#playersVal`).textContent = state.players;
-  buildChips('playersChips', opts, state.players, 'players');
+  const minP = state.type === 'singles' ? 2 : 4;
+  buildChips('playersChips', opts, state.players, 'players', minP, 16);
 }
 
-buildChips('matchesChips', matchOptions(), state.matches, 'matches');
+buildChips('matchesChips', matchOptions(), state.matches, 'matches', 1, 60);
 rebuildPlayerChips();
 
 // 局制选项

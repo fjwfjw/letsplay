@@ -1,8 +1,12 @@
-"""根据用户 IP 确定性生成昵称与头像（SVG）。同一 IP 永远得到同一身份。
+"""根据用户 IP 确定性生成昵称与头像（DiceBear bottts-neutral）。同一 IP 永远得到同一身份。
 
 增强差异化：即使同一 IP 段（如 10.0.0.81 vs 10.0.0.82）也会产生明显不同的昵称和头像。
 """
 import hashlib
+import random as _random
+
+# DiceBear bottts-neutral 风格头像 API
+DICEBEAR_BASE = "https://api.dicebear.com/7.x/bottts-neutral/svg?seed="
 
 # 形容词池：运动/竞技感
 ADJECTIVES = [
@@ -68,36 +72,12 @@ def generate_identity(ip: str) -> dict:
 
 
 def _build_avatar(seed: int) -> str:
-    """生成确定性几何头像 SVG（5x5 对称色块，类似 identicon）。
+    """生成 DiceBear bottts-neutral 头像（img 标签，确定性）。"""
+    seed_str = f"letsplay-{seed:x}"
+    return f'<img src="{DICEBEAR_BASE}{seed_str}" alt="avatar" style="width:100%;height:100%;display:block;" />'
 
-    增强差异化：使用更多 seed 位来决定颜色和图案。
-    """
-    pair = PALETTE[(seed >> 24) % len(PALETTE)]
-    fg, bg = pair[0], pair[1]
 
-    # 5x5 对称矩阵：左 3 列决定整行
-    cells = []
-    bit = seed >> 32
-    for row in range(5):
-        for col in range(3):  # 只取左 3 列
-            on = (bit >> (row * 3 + col)) & 1
-            if on:
-                cells.append((col, row))
-                if col < 2:  # 镜像到右侧
-                    cells.append((4 - col, row))
-                else:
-                    if (col, row) not in cells:
-                        cells.append((4 - col, row))
-
-    rects = ""
-    for (cx, cy) in dict.fromkeys(cells):  # 去重保序
-        rects += f'<rect x="{cx*8}" y="{cy*8}" width="8" height="8" fill="{fg}"/>'
-
-    svg = (
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" '
-        f'shape-rendering="crispEdges">'
-        f'<rect width="40" height="40" fill="{bg}"/>'
-        f"{rects}"
-        f"</svg>"
-    )
-    return svg
+def generate_random_avatar() -> str:
+    """生成随机 DiceBear 头像（用于注册时换头像）。"""
+    seed_str = f"letsplay-{_random.randint(0, 2**63):x}"
+    return f'<img src="{DICEBEAR_BASE}{seed_str}" alt="avatar" style="width:100%;height:100%;display:block;" />'

@@ -5,11 +5,61 @@ const API_BASE = location.hostname.includes('github.io')
   ? 'https://pve.u2170167.nyat.app:38412'
   : '';
 
+// ---------- Token 管理 ----------
+const TOKEN_KEY = 'letsplay_token';
+const TOKEN_EXPIRE_KEY = 'letsplay_token_expire';
+const GUEST_KEY = 'letsplay_guest';
+const TOKEN_TTL_MS = 90 * 24 * 3600 * 1000; // 90 天
+
+function getToken() {
+  const token = localStorage.getItem(TOKEN_KEY);
+  const expire = parseInt(localStorage.getItem(TOKEN_EXPIRE_KEY) || '0', 10);
+  if (!token || Date.now() > expire) {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_EXPIRE_KEY);
+    return null;
+  }
+  return token;
+}
+
+function setToken(token) {
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(TOKEN_EXPIRE_KEY, String(Date.now() + TOKEN_TTL_MS));
+  localStorage.removeItem(GUEST_KEY); // 正式登录清除游客标记
+}
+
+function clearToken() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(TOKEN_EXPIRE_KEY);
+  localStorage.removeItem(GUEST_KEY);
+}
+
+function isLoggedIn() {
+  return !!getToken();
+}
+
+function isGuest() {
+  return !isLoggedIn() && localStorage.getItem(GUEST_KEY) === '1';
+}
+
+function setGuest() {
+  localStorage.setItem(GUEST_KEY, '1');
+}
+
+function isAuthed() {
+  return isLoggedIn() || isGuest();
+}
+
 const API = {
   async _fetch(path, opts = {}) {
+    const headers = { 'Content-Type': 'application/json', ...opts.headers };
+    const token = getToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
     const res = await fetch(API_BASE + path, {
-      headers: { 'Content-Type': 'application/json' },
       ...opts,
+      headers,
     });
     let data;
     try { data = await res.json(); } catch { data = {}; }
@@ -29,6 +79,40 @@ const API = {
       body: JSON.stringify(body),
     });
   },
+  // 注册 / 登录
+  register(loginKey, gender, nickname, avatar) {
+    const body = { login_key: loginKey, gender };
+    if (nickname) body.nickname = nickname;
+    if (avatar) body.avatar = avatar;
+    return this._fetch('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+  login(loginKey) {
+    return this._fetch('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ login_key: loginKey }),
+    });
+  },
+  getRandomAvatar() { return this._fetch('/api/avatar/random'); },
+  // 好友
+  getFriends() { return this._fetch('/api/friends'); },
+  getFriendRequests() { return this._fetch('/api/friends/requests'); },
+  sendFriendRequest(toUid) {
+    return this._fetch('/api/friends/request', {
+      method: 'POST',
+      body: JSON.stringify({ to_uid: toUid }),
+    });
+  },
+  acceptFriend(fromUid) {
+    return this._fetch('/api/friends/accept', {
+      method: 'POST',
+      body: JSON.stringify({ from_uid: fromUid }),
+    });
+  },
+  // 个人统计
+  getMyStats() { return this._fetch('/api/me/stats'); },
   listBattles() { return this._fetch('/api/battles'); },
   createBattle(type, maxPlayers, totalMatches, bestOf = 3, gamePoint = 21, assignMode = 'random') {
     return this._fetch('/api/battle/create', {
@@ -110,13 +194,248 @@ function applyUserToChip(user) {
 
 // 渲染顶部用户身份条
 async function renderUserChip() {
+  // 未登录且非游客 -> 显示登录弹窗
+  if (!isAuthed()) {
+    showLoginDialog();
+    return null;
+  }
   try {
     const user = await API.me();
     applyUserToChip(user);
     return user;
   } catch (e) {
+    // token 失效 -> 清除并显示登录弹窗
+    clearToken();
+    showLoginDialog();
     return null;
   }
+}
+
+// ---------- 登录 / 注册弹窗 ----------
+function showLoginDialog() {
+  if ($('#loginOverlay')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'loginOverlay';
+  overlay.className = 'nick-overlay';
+  overlay.innerHTML = `
+    <div class="nick-modal" style="max-width:360px;">
+      <div class="nick-modal-title">LET'S PLAY</div>
+      <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted);text-align:center;margin-bottom:20px;letter-spacing:1px;">登录 / 注册</div>
+
+      <!-- Tab 切换 -->
+      <div class="login-tabs" style="display:flex;gap:0;margin-bottom:20px;border:1px solid var(--line-strong);border-radius:4px;overflow:hidden;">
+        <button class="login-tab active" data-tab="register" style="flex:1;padding:10px;background:var(--lime);color:var(--bg);border:none;font-family:var(--font-body);font-size:13px;font-weight:700;cursor:pointer;">首次注册</button>
+        <button class="login-tab" data-tab="login" style="flex:1;padding:10px;background:var(--bg-2);color:var(--fg-dim);border:none;font-family:var(--font-body);font-size:13px;font-weight:500;cursor:pointer;">密钥登录</button>
+      </div>
+
+      <!-- 注册面板 -->
+      <div id="registerPanel">
+        <!-- 头像 + 换头像 -->
+        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg-2);border-radius:4px;margin-bottom:16px;">
+          <div style="position:relative;">
+            <div class="nick-modal-ava" id="regAva" style="width:48px;height:48px;"><span class="loading"></span></div>
+            <button id="changeAvatarBtn" type="button" style="position:absolute;bottom:-2px;right:-2px;width:20px;height:20px;border-radius:50%;background:var(--lime);color:var(--bg);border:2px solid var(--bg-1);font-size:10px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;">↻</button>
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">昵称</div>
+            <input class="nick-input" id="regNickInput" type="text" maxlength="20" placeholder="输入昵称" style="margin:0;padding:8px 10px;font-size:14px;width:100%;" />
+          </div>
+        </div>
+
+        <div class="nick-gender-label">性别（用于混双/分性别分配）</div>
+        <div class="nick-gender-row">
+          <button class="nick-gender-btn" data-gender="male">男</button>
+          <button class="nick-gender-btn" data-gender="female">女</button>
+        </div>
+
+        <input class="nick-input" id="regKeyInput" type="text" maxlength="64" placeholder="设置登录密钥（3-64位）" style="margin-top:16px;" />
+        <div class="nick-modal-hint">密钥用于后续登录，请妥善保管</div>
+
+        <div id="registerError" style="color:var(--coral);font-size:12px;margin-top:8px;display:none;"></div>
+
+        <div class="nick-modal-actions" style="margin-top:16px;">
+          <button class="btn btn-primary" id="registerBtn" style="width:100%;">注册</button>
+        </div>
+      </div>
+
+      <!-- 登录面板 -->
+      <div id="loginPanel" style="display:none;">
+        <input class="nick-input" id="loginKeyInput" type="text" maxlength="64" placeholder="输入登录密钥" />
+        <div class="nick-modal-hint">输入注册时设置的密钥</div>
+
+        <div id="loginError" style="color:var(--coral);font-size:12px;margin-top:8px;display:none;"></div>
+
+        <div class="nick-modal-actions" style="margin-top:16px;">
+          <button class="btn btn-primary" id="loginBtn" style="width:100%;">登录</button>
+        </div>
+      </div>
+
+      <!-- 游客登录 -->
+      <div style="margin-top:20px;text-align:center;padding-top:16px;border-top:1px solid var(--line);">
+        <button class="btn btn-ghost" id="guestBtn" style="width:100%;font-size:12px;color:var(--muted);">游客登录（无法使用好友功能）</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.body.style.overflow = 'hidden';
+  void overlay.offsetWidth;
+  overlay.classList.add('show');
+
+  // 预加载 IP 派生的昵称头像
+  let regGender = 'unknown';
+  let regAvatar = null;
+
+  // 用不带 token 的请求获取 IP 派生身份
+  fetch(API_BASE + '/api/me')
+    .then(r => r.json())
+    .then(u => {
+      regAvatar = u.avatar || '';
+      $('#regAva').innerHTML = regAvatar;
+      $('#regNickInput').value = u.nickname || '';
+    })
+    .catch(() => {
+      $('#regNickInput').placeholder = '输入昵称';
+    });
+
+  // 换头像
+  $('#changeAvatarBtn', overlay).addEventListener('click', async () => {
+    const btn = $('#changeAvatarBtn');
+    btn.disabled = true;
+    btn.textContent = '...';
+    try {
+      const data = await API.getRandomAvatar();
+      regAvatar = data.avatar;
+      $('#regAva').innerHTML = regAvatar;
+    } catch {
+      toast('换头像失败', true);
+    }
+    btn.disabled = false;
+    btn.textContent = '↻';
+  });
+
+  // Tab 切换
+  $$('.login-tab', overlay).forEach(tab => {
+    tab.addEventListener('click', () => {
+      const isRegister = tab.dataset.tab === 'register';
+      $$('.login-tab', overlay).forEach(t => {
+        t.classList.toggle('active', t === tab);
+        if (t === tab) {
+          t.style.background = 'var(--lime)';
+          t.style.color = 'var(--bg)';
+          t.style.fontWeight = '700';
+        } else {
+          t.style.background = 'var(--bg-2)';
+          t.style.color = 'var(--fg-dim)';
+          t.style.fontWeight = '500';
+        }
+      });
+      $('#registerPanel').style.display = isRegister ? '' : 'none';
+      $('#loginPanel').style.display = isRegister ? 'none' : '';
+    });
+  });
+
+  // 性别选择
+  $$('.nick-gender-btn', overlay).forEach(btn => {
+    btn.addEventListener('click', () => {
+      $$('.nick-gender-btn', overlay).forEach(b => b.classList.remove('selected'));
+      if (regGender === btn.dataset.gender) {
+        regGender = 'unknown';
+      } else {
+        regGender = btn.dataset.gender;
+        btn.classList.add('selected');
+      }
+    });
+  });
+
+  // 注册
+  $('#registerBtn', overlay).addEventListener('click', async () => {
+    const key = $('#regKeyInput').value.trim();
+    const nick = $('#regNickInput').value.trim();
+    const errEl = $('#registerError');
+    errEl.style.display = 'none';
+    if (!nick) {
+      errEl.textContent = '请输入昵称';
+      errEl.style.display = 'block';
+      return;
+    }
+    if (!key || key.length < 3) {
+      errEl.textContent = '密钥至少 3 个字符';
+      errEl.style.display = 'block';
+      return;
+    }
+    if (regGender === 'unknown') {
+      errEl.textContent = '请选择性别';
+      errEl.style.display = 'block';
+      return;
+    }
+    const btn = $('#registerBtn');
+    btn.disabled = true;
+    btn.textContent = '注册中…';
+    try {
+      const user = await API.register(key, regGender, nick, regAvatar);
+      setToken(user.token);
+      closeLoginDialog();
+      toast('注册成功！');
+      // 刷新页面
+      location.reload();
+    } catch (e) {
+      errEl.textContent = e.message || '注册失败';
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = '注册';
+    }
+  });
+
+  // 登录
+  $('#loginBtn', overlay).addEventListener('click', async () => {
+    const key = $('#loginKeyInput').value.trim();
+    const errEl = $('#loginError');
+    errEl.style.display = 'none';
+    if (!key) {
+      errEl.textContent = '请输入密钥';
+      errEl.style.display = 'block';
+      return;
+    }
+    const btn = $('#loginBtn');
+    btn.disabled = true;
+    btn.textContent = '登录中…';
+    try {
+      const user = await API.login(key);
+      setToken(user.token);
+      closeLoginDialog();
+      toast('登录成功！');
+      location.reload();
+    } catch (e) {
+      errEl.textContent = e.message || '登录失败';
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = '登录';
+    }
+  });
+
+  // Enter 提交
+  $('#regKeyInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') $('#registerBtn').click();
+  });
+  $('#loginKeyInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') $('#loginBtn').click();
+  });
+
+  // 游客登录
+  $('#guestBtn', overlay).addEventListener('click', () => {
+    setGuest();
+    closeLoginDialog();
+    toast('已以游客身份进入');
+    location.reload();
+  });
+}
+
+function closeLoginDialog() {
+  const overlay = $('#loginOverlay');
+  if (!overlay) return;
+  overlay.classList.remove('show');
+  document.body.style.overflow = '';
+  setTimeout(() => overlay.remove(), 250);
 }
 
 // 昵称编辑弹窗
@@ -141,6 +460,7 @@ function openNicknameEditor(user) {
         <button class="btn btn-ghost nick-cancel">取消</button>
         <button class="btn btn-primary nick-save">保存</button>
       </div>
+      ${isLoggedIn() ? '<a href="profile.html" style="display:block;text-align:center;margin-top:14px;font-size:12px;color:var(--muted);font-family:var(--font-mono);text-decoration:none;">个人中心 -&gt;</a>' : ''}
     </div>
   `;
   document.body.appendChild(overlay);

@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="application-name" content="LET'S PLAY" />
+  <meta name="description" content="在线羽毛球对战记分" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-title" content="LET'S PLAY" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#07090f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <title>个人中心 · LET'S PLAY</title>
+  <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  <link rel="apple-touch-icon" href="apple-touch-icon-180x180.png" />
+  <link rel="stylesheet" href="css/style.css?v=10" />
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark">LET'S PLAY</span>
+        <span class="sub">Profile</span>
+      </div>
+      <div class="user-chip" id="userChip">
+        <div class="ava"><span class="loading"></span></div>
+        <span class="name">加载中</span>
+      </div>
+    </header>
+
+    <!-- 统计卡片 -->
+    <div class="stats-row" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;">
+      <div class="stat-card" style="background:var(--bg-1);border:1px solid var(--line);border-radius:8px;padding:16px 20px;min-width:100px;">
+        <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">胜率</div>
+        <div id="statWinRate" style="font-family:var(--font-display);font-size:28px;line-height:1;color:var(--lime);">-</div>
+      </div>
+      <div class="stat-card" style="background:var(--bg-1);border:1px solid var(--line);border-radius:8px;padding:16px 20px;min-width:100px;">
+        <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">胜/负</div>
+        <div id="statWins" style="font-family:var(--font-display);font-size:28px;line-height:1;color:var(--cyan);">-</div>
+      </div>
+      <div class="stat-card" style="background:var(--bg-1);border:1px solid var(--line);border-radius:8px;padding:16px 20px;min-width:100px;">
+        <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;">总场次</div>
+        <div id="statTotal" style="font-family:var(--font-display);font-size:28px;line-height:1;color:var(--gold);">-</div>
+      </div>
+    </div>
+
+    <!-- 好友请求 -->
+    <section class="panel hidden" id="friendReqPanel" style="margin-bottom:20px;">
+      <div class="panel-head">
+        <h2>好友请求</h2>
+        <span class="tag" id="reqCount">0</span>
+      </div>
+      <div id="friendReqList" class="players"></div>
+    </section>
+
+    <!-- 好友列表 -->
+    <section class="panel" style="margin-bottom:20px;">
+      <div class="panel-head">
+        <h2>好友</h2>
+        <span class="tag" id="friendCount">0</span>
+      </div>
+      <div id="friendsList" class="players stagger">
+        <div class="empty"><div class="big">暂无好友</div><div>在对局中添加好友吧</div></div>
+      </div>
+    </section>
+
+    <!-- 队友胜率 -->
+    <section class="panel hidden" id="teammatePanel" style="margin-bottom:20px;">
+      <div class="panel-head">
+        <h2>队友胜率</h2>
+        <span class="tag">Teammates</span>
+      </div>
+      <div id="teammateList"></div>
+    </section>
+
+    <!-- 对战记录 -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>对战记录</h2>
+        <span class="tag" id="historyCount">0</span>
+      </div>
+      <div id="historyList">
+        <div class="empty"><div class="big">暂无对战记录</div></div>
+      </div>
+    </section>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script>
+    // ---------- 检查登录 ----------
+    if (!isLoggedIn()) {
+      // 游客无权访问个人中心
+      location.href = 'index.html';
+    }
+
+    // ---------- 加载数据 ----------
+    async function loadProfile() {
+      if (!isLoggedIn()) return;
+      try {
+        const [statsData, friendsData, reqData] = await Promise.all([
+          API.getMyStats(),
+          API.getFriends(),
+          API.getFriendRequests(),
+        ]);
+        renderUser(statsData.user);
+        renderStats(statsData);
+        renderFriends(friendsData.friends || []);
+        renderFriendRequests(reqData.requests || []);
+        renderTeammates(statsData.teammates || []);
+        renderHistory(statsData.history || []);
+      } catch (e) {
+        toast(e.message || '加载失败', true);
+      }
+    }
+
+    function renderUser(user) {
+      applyUserToChip(user);
+    }
+
+    function renderStats(data) {
+      $('#statWinRate').textContent = data.win_rate + '%';
+      $('#statWins').textContent = `${data.matches_won}/${data.matches_played - data.matches_won}`;
+      $('#statTotal').textContent = data.matches_played;
+    }
+
+    function renderFriends(friends) {
+      const list = $('#friendsList');
+      $('#friendCount').textContent = friends.length;
+      if (!friends.length) {
+        list.innerHTML = '<div class="empty"><div class="big">暂无好友</div><div>在对局中添加好友吧</div></div>';
+        return;
+      }
+      list.innerHTML = friends.map(f => `
+        <div class="player">
+          <div class="ava">${f.avatar}</div>
+          <div class="meta">
+            <div class="nick">${escapeHtml(f.nickname)}</div>
+            <div class="role">${f.gender === 'male' ? '男' : f.gender === 'female' ? '女' : ''}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderFriendRequests(requests) {
+      const panel = $('#friendReqPanel');
+      if (!requests.length) {
+        panel.classList.add('hidden');
+        return;
+      }
+      panel.classList.remove('hidden');
+      $('#reqCount').textContent = requests.length;
+      const list = $('#friendReqList');
+      list.innerHTML = requests.map(r => `
+        <div class="player">
+          <div class="ava">${r.avatar}</div>
+          <div class="meta">
+            <div class="nick">${escapeHtml(r.nickname)}</div>
+            <div class="role">请求加你为好友</div>
+          </div>
+          <button class="btn btn-primary accept-btn" data-uid="${r.id}" style="padding:6px 14px;font-size:12px;">接受</button>
+        </div>
+      `).join('');
+      $$('.accept-btn', list).forEach(btn => {
+        btn.addEventListener('click', async () => {
+          try {
+            await API.acceptFriend(btn.dataset.uid);
+            toast('已添加好友');
+            loadProfile();
+          } catch (e) {
+            toast(e.message, true);
+          }
+        });
+      });
+    }
+
+    function renderTeammates(teammates) {
+      const panel = $('#teammatePanel');
+      if (!teammates.length) {
+        panel.classList.add('hidden');
+        return;
+      }
+      panel.classList.remove('hidden');
+      const list = $('#teammateList');
+      list.innerHTML = teammates.map(t => {
+        const rate = t.played > 0 ? Math.round(t.won / t.played * 100) : 0;
+        const rateColor = rate >= 60 ? 'var(--lime)' : rate >= 40 ? 'var(--gold)' : 'var(--coral)';
+        return `
+          <div class="player" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);">
+            <div class="ava">${t.avatar}</div>
+            <div class="meta" style="flex:1;">
+              <div class="nick">${escapeHtml(t.nickname)}</div>
+              <div class="role">同队 ${t.played} 场 · 赢 ${t.won} 场</div>
+            </div>
+            <div style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:${rateColor};">${rate}%</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderHistory(history) {
+      const list = $('#historyList');
+      $('#historyCount').textContent = history.length;
+      if (!history.length) {
+        list.innerHTML = '<div class="empty"><div class="big">暂无对战记录</div></div>';
+        return;
+      }
+      list.innerHTML = history.map(h => {
+        const typeLabel = h.type === 'singles' ? '单打' : '双打';
+        const statusLabel = h.status === 'ongoing' ? '进行中' : h.status === 'finished' ? '已结束' : '等待中';
+        const statusColor = h.status === 'ongoing' ? 'var(--lime)' : h.status === 'finished' ? 'var(--muted)' : 'var(--gold)';
+        const myWins = h.my_matches.filter(m => m.win).length;
+        const myLosses = h.my_matches.filter(m => m.status === 'done' && !m.win).length;
+        const bestOfLabel = h.best_of === 1 ? '一局' : '三局两胜';
+        return `
+          <div class="room-card" style="margin-bottom:12px;cursor:pointer;" data-bid="${h.battle_id}">
+            <div class="room-header">
+              <span class="room-id">#${escapeHtml(h.battle_id)}</span>
+              <span class="room-status ${h.status}" style="font-family:var(--font-mono);font-size:10px;letter-spacing:1px;text-transform:uppercase;padding:3px 10px;border-radius:12px;font-weight:700;background:rgba(255,255,255,0.05);color:${statusColor};">${statusLabel}</span>
+              <span class="room-type">${typeLabel} · ${h.game_point}分制 · ${bestOfLabel}</span>
+              <div class="room-meta">
+                <span><b>${myWins}</b>胜 <b>${myLosses}</b>负</span>
+                <span>${h.players_count} 人</span>
+                <span>${formatAgo(h.created_at)}</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+      $$('.room-card', list).forEach(card => {
+        card.addEventListener('click', () => {
+          location.href = `matches.html?id=${card.dataset.bid}`;
+        });
+      });
+    }
+
+    function formatAgo(ts) {
+      const s = Math.floor(Date.now() / 1000) - ts;
+      if (s < 60) return '刚刚';
+      if (s < 3600) return Math.floor(s / 60) + ' 分钟前';
+      if (s < 86400) return Math.floor(s / 3600) + ' 小时前';
+      return Math.floor(s / 86400) + ' 天前';
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // 左上角 logo 点击返回首页
+    const _brand = $('.brand');
+    if (_brand) {
+      _brand.style.cursor = 'pointer';
+      _brand.addEventListener('click', () => { location.href = 'index.html'; });
+    }
+
+    loadProfile();
+  </script>
+</body>
+</html>

@@ -43,6 +43,9 @@ function renderBoard(data) {
     $('#fairnessTag').textContent = `出场均衡 · ${fairness.min}~${fairness.max} 场/人${fairness.balanced ? ' ✓' : ''}`;
   }
 
+  // 渲染参赛玩家（可加好友）
+  renderMatchPlayers(players);
+
   const list = $('#matchList');
   list.innerHTML = '';
   if (!matches.length) {
@@ -91,6 +94,75 @@ function renderBoard(data) {
   } else {
     $('#rankingPanel').style.display = 'none';
   }
+}
+
+// ---------- 参赛玩家（可加好友） ----------
+async function renderMatchPlayers(players) {
+  const container = $('#matchPlayers');
+  if (!container) return;
+  // 游客不显示好友按钮
+  if (!isLoggedIn()) {
+    container.innerHTML = players.map(p => `
+      <div style="display:flex;align-items:center;gap:6px;background:var(--bg-2);border:1px solid var(--line);border-radius:20px;padding:4px 10px 4px 4px;">
+        <div style="width:24px;height:24px;border-radius:50%;overflow:hidden;">${p.avatar}</div>
+        <span style="font-size:12px;font-weight:500;">${escapeHtmlName(p.nickname)}</span>
+      </div>
+    `).join('');
+    return;
+  }
+  let myId = null;
+  try { const me = await API.me(); myId = me?.id; } catch {}
+  let friends = [];
+  try { const f = await API.getFriends(); friends = (f.friends || []).map(f => f.id); } catch {}
+
+  container.innerHTML = players.map(p => {
+    const isMe = p.id === myId;
+    const isFriend = friends.includes(p.id);
+    let actionHTML = '';
+    if (isMe) {
+      actionHTML = '<span style="font-size:11px;color:var(--muted);font-family:var(--font-mono);">我</span>';
+    } else if (isFriend) {
+      actionHTML = '<span style="font-size:11px;color:var(--lime);font-family:var(--font-mono);">好友</span>';
+    } else {
+      actionHTML = `<button class="add-friend-btn" data-uid="${p.id}" style="background:var(--bg-2);border:1px solid var(--line-strong);color:var(--fg-dim);font-size:11px;padding:3px 10px;border-radius:4px;cursor:pointer;font-family:var(--font-mono);">+好友</button>`;
+    }
+    return `
+      <div style="display:flex;align-items:center;gap:6px;background:var(--bg-2);border:1px solid var(--line);border-radius:20px;padding:4px 10px 4px 4px;">
+        <div style="width:24px;height:24px;border-radius:50%;overflow:hidden;">${p.avatar}</div>
+        <span style="font-size:12px;font-weight:500;">${escapeHtmlName(p.nickname)}</span>
+        ${actionHTML}
+      </div>
+    `;
+  }).join('');
+
+  $$('.add-friend-btn', container).forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.textContent = '...';
+      try {
+        const res = await API.sendFriendRequest(btn.dataset.uid);
+        if (res.accepted) {
+          btn.textContent = '好友';
+          btn.style.color = 'var(--lime)';
+          toast('已添加好友');
+        } else {
+          btn.textContent = '已请求';
+          btn.style.color = 'var(--gold)';
+          toast('好友请求已发送');
+        }
+      } catch (e) {
+        toast(e.message, true);
+        btn.disabled = false;
+        btn.textContent = '+好友';
+      }
+    });
+  });
+}
+
+function escapeHtmlName(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }
 
 // ---------- 排名 ----------

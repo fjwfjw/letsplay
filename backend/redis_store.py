@@ -7,10 +7,12 @@ import redis
 from nickname import generate_identity
 from matchmaker import generate_matches, fairness_report, generate_free_matches
 
-# TTL（秒）：对战活跃时保留 24h；结束后保留 2h 再清理；用户身份 7 天
+# TTL（秒）：对战活跃时保留 24h；结束后保留 2h 再清理；用户身份 90 天
 BATTLE_TTL = 24 * 3600
 FINISHED_TTL = 2 * 3600
-USER_TTL = 7 * 24 * 3600
+USER_TTL = 90 * 24 * 3600
+TOKEN_TTL = 90 * 24 * 3600
+FRIEND_TTL = 90 * 24 * 3600
 # 过期清理阈值：waiting 超过 N 秒 / ongoing 超过 M 秒自动 finished
 WAITING_EXPIRE = 4 * 3600
 ONGOING_EXPIRE = 8 * 3600
@@ -73,6 +75,225 @@ class Store:
             self.r.hset(key, mapping=mapping)
         self.r.expire(key, USER_TTL)
         return self.get_user(uid)
+
+    # ---------- 注册 / 登录 / Token ----------
+    def register_user(self, login_key: str, gender: str, ip: str, nickname: str = None, avatar: str = None) -> dict:
+        """首次注册：密钥查重，用 IP 生成昵称头像（可覆盖），返回 user + token。"""
+        # 密钥查重
+        existing_uid = self.r.get(f"key:{login_key}")
+        if existing_uid:
+            raise ValueError("该密钥已被注册")
+        # 用 IP 生成确定性身份
+        ident = generate_identity(ip)
+        uid = ident["id"]
+        # 允许自定义昵称和头像，否则用 IP 派生的
+        final_nick = nickname if nickname else ident["nickname"]
+        final_avatar = avatar if avatar else ident["avatar"]
+        key = f"user:{uid}"
+        if not self.r.exists(key):
+            self.r.hset(key, mapping={
+                "id": uid,
+                "nickname": final_nick,
+                "avatar": final_avatar,
+                "gender": gender,
+                "ip": ip,
+                "login_key": login_key,
+                "created_at": int(time.time()),
+            })
+        else:
+            # 用户已存在（IP 派生），覆盖昵称头像和 login_key
+            mapping = {"login_key": login_key, "gender": gender, "nickname": final_nick, "avatar": final_avatar}
+            self.r.hset(key, mapping=mapping)
+        self.r.expire(key, USER_TTL)
+        # 存密钥 -> uid 映射
+        self.r.set(f"key:{login_key}", uid, ex=USER_TTL)
+        # 生成 token
+        token = uuid.uuid4().hex
+        self.r.set(f"token:{token}", uid, ex=TOKEN_TTL)
+        user = self.get_user(uid)
+        user["token"] = token
+        return user
+
+    def login_user(self, login_key: str) -> dict:
+        """密钥登录：返回 user + token。"""
+        uid = self.r.get(f"key:{login_key}")
+        if not uid:
+            raise ValueError("密钥不存在，请先注册")
+        user = self.get_user(uid)
+        if not user:
+            raise ValueError("用户数据不存在")
+        # 生成新 token
+        token = uuid.uuid4().hex
+        self.r.set(f"token:{token}", uid, ex=TOKEN_TTL)
+        user["token"] = token
+        return user
+
+    def get_user_by_token(self, token: str) -> dict:
+        """通过 token 获取用户。"""
+        uid = self.r.get(f"token:{token}")
+        if not uid:
+            return None
+        return self.get_user(uid)
+
+    # ---------- 好友 ----------
+    def send_friend_request(self, from_uid: str, to_uid: str) -> dict:
+        """发送好友请求。"""
+        if from_uid == to_uid:
+            raise ValueError("不能加自己为好友")
+        if not self.r.exists(f"user:{to_uid}"):
+            raise ValueError("目标用户不存在")
+        # 已是好友
+        if self.r.sismember(f"friends:{from_uid}", to_uid):
+            raise ValueError("已经是好友了")
+        # 互相请求 -> 直接成为好友
+        if self.r.sismember(f"friend_req:{from_uid}", to_uid):
+            # 对方已请求加我，直接互加
+            self.r.sadd(f"friends:{from_uid}", to_uid)
+            self.r.sadd(f"friends:{to_uid}", from_uid)
+            self.r.srem(f"friend_req:{from_uid}", to_uid)
+            self.r.expire(f"friends:{from_uid}", FRIEND_TTL)
+            self.r.expire(f"friends:{to_uid}", FRIEND_TTL)
+            return {"ok": True, "accepted": True}
+        # 发送请求
+        self.r.sadd(f"friend_req:{to_uid}", from_uid)
+        self.r.expire(f"friend_req:{to_uid}", FRIEND_TTL)
+        return {"ok": True, "accepted": False}
+
+    def accept_friend_request(self, from_uid: str, to_uid: str) -> dict:
+        """接受好友请求。"""
+        if not self.r.sismember(f"friend_req:{to_uid}", from_uid):
+            raise ValueError("没有来自该用户的好友请求")
+        self.r.sadd(f"friends:{to_uid}", from_uid)
+        self.r.sadd(f"friends:{from_uid}", to_uid)
+        self.r.srem(f"friend_req:{to_uid}", from_uid)
+        self.r.expire(f"friends:{to_uid}", FRIEND_TTL)
+        self.r.expire(f"friends:{from_uid}", FRIEND_TTL)
+        return {"ok": True}
+
+    def get_friends(self, uid: str) -> list:
+        """获取好友列表。"""
+        uids = self.r.smembers(f"friends:{uid}")
+        friends = []
+        for fuid in uids:
+            u = self.get_user(fuid)
+            if u:
+                friends.append(u)
+        return friends
+
+    def get_friend_requests(self, uid: str) -> list:
+        """获取待处理的好友请求列表。"""
+        uids = self.r.smembers(f"friend_req:{uid}")
+        reqs = []
+        for fuid in uids:
+            u = self.get_user(fuid)
+            if u:
+                reqs.append(u)
+        return reqs
+
+    def is_friend(self, uid: str, other_uid: str) -> bool:
+        return self.r.sismember(f"friends:{uid}", other_uid)
+
+    # ---------- 个人统计 ----------
+    def get_user_stats(self, uid: str) -> dict:
+        """获取用户对战统计：对战记录、胜率、组队胜率。"""
+        user = self.get_user(uid)
+        if not user:
+            raise ValueError("用户不存在")
+
+        matches_played = 0
+        matches_won = 0
+        games_played = 0
+        games_won = 0
+        history = []
+        teammate_stats = {}  # uid -> {played, won}
+
+        # 扫描所有对战
+        for key in self.r.scan_iter(match="battle:*", count=200):
+            key = key.decode() if isinstance(key, bytes) else key
+            if key.endswith(":players") or key.endswith(":matches"):
+                continue
+            bid = key.split(":", 1)[1]
+            battle = self.get_battle(bid)
+            if not battle:
+                continue
+            players = self.get_players(bid)
+            player_ids = [p["id"] for p in players]
+            if uid not in player_ids:
+                continue
+            matches = self.get_matches(bid) if battle["status"] in ("ongoing", "finished") else []
+            user_matches = []
+            for m in matches:
+                team_a = m.get("team_a", [])
+                team_b = m.get("team_b", [])
+                if uid not in team_a and uid not in team_b:
+                    continue
+                user_team = team_a if uid in team_a else team_b
+                opp_team = team_b if uid in team_a else team_a
+                user_game = m["game_a"] if uid in team_a else m["game_b"]
+                opp_game = m["game_b"] if uid in team_a else m["game_a"]
+                is_win = m["status"] == "done" and user_game > opp_game
+                if m["status"] == "done":
+                    matches_played += 1
+                    if is_win:
+                        matches_won += 1
+                games_played += user_game + opp_game
+                games_won += user_game
+                # 队友统计
+                teammates = [t for t in user_team if t != uid]
+                for t in teammates:
+                    if t not in teammate_stats:
+                        teammate_stats[t] = {"played": 0, "won": 0, "nickname": "", "avatar": ""}
+                    teammate_stats[t]["played"] += 1
+                    if is_win:
+                        teammate_stats[t]["won"] += 1
+                user_matches.append({
+                    "index": m["index"],
+                    "status": m["status"],
+                    "score_a": m["score_a"],
+                    "score_b": m["score_b"],
+                    "game_a": m["game_a"],
+                    "game_b": m["game_b"],
+                    "win": is_win,
+                    "team": "a" if uid in team_a else "b",
+                })
+            if user_matches:
+                creator = next((p for p in players if p["id"] == battle["creator_id"]), None)
+                history.append({
+                    "battle_id": bid,
+                    "type": battle["type"],
+                    "status": battle["status"],
+                    "created_at": int(battle["created_at"]),
+                    "finished_at": int(battle["finished_at"]) if battle.get("finished_at") else None,
+                    "total_matches": battle["total_matches"],
+                    "best_of": battle["best_of"],
+                    "game_point": battle["game_point"],
+                    "my_matches": user_matches,
+                    "creator": creator,
+                    "players_count": len(players),
+                })
+
+        # 填充队友信息
+        for tuid, stats in teammate_stats.items():
+            tu = self.get_user(tuid)
+            if tu:
+                stats["nickname"] = tu["nickname"]
+                stats["avatar"] = tu["avatar"]
+                stats["id"] = tuid
+
+        history.sort(key=lambda x: x["created_at"], reverse=True)
+        win_rate = round(matches_won / matches_played * 100, 1) if matches_played > 0 else 0
+        teammate_list = sorted(teammate_stats.values(), key=lambda x: x["played"], reverse=True)
+
+        return {
+            "user": user,
+            "matches_played": matches_played,
+            "matches_won": matches_won,
+            "win_rate": win_rate,
+            "games_played": games_played,
+            "games_won": games_won,
+            "history": history,
+            "teammates": teammate_list,
+        }
 
     # ---------- 对战 ----------
     def check_create_limit(self, ip: str) -> bool:
@@ -366,11 +587,15 @@ class Store:
         return stats
 
     def list_active_battles(self, uid: str = None) -> list:
-        """扫描所有未结束的对战，只返回当前用户创建的或已加入的房间。
+        """扫描所有未结束的对战，返回当前用户创建的、已加入的、或好友的房间。
 
         返回按创建时间倒序排列的列表，每项含 battle 基础字段、玩家数、玩家列表、
-        以及当前用户是否已加入该对战 (joined)。
+        以及当前用户是否已加入该对战 (joined)、是否好友房间 (is_friend)。
         """
+        # 获取好友列表
+        friend_ids = set()
+        if uid:
+            friend_ids = self.r.smembers(f"friends:{uid}")
         out = []
         for key in self.r.scan_iter(match="battle:*", count=200):
             key = key.decode() if isinstance(key, bytes) else key
@@ -384,8 +609,9 @@ class Store:
             player_ids = [p["id"] for p in players]
             is_creator = uid == battle["creator_id"]
             is_joined = uid in player_ids if uid else False
-            # 只显示自己创建的或已加入的对战
-            if not is_creator and not is_joined:
+            is_friend_room = bool(friend_ids & set(player_ids))
+            # 显示：自己创建的、已加入的、好友的房间
+            if not is_creator and not is_joined and not is_friend_room:
                 continue
             out.append({
                 "id": bid,
@@ -402,6 +628,8 @@ class Store:
                 "players_count": len(players),
                 "players": players,
                 "joined": is_joined,
+                "is_friend": is_friend_room and not is_creator and not is_joined,
+                "is_full": len(players) >= battle["max_players"],
             })
         out.sort(key=lambda x: x["created_at"], reverse=True)
         return out

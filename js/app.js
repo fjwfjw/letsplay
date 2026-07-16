@@ -237,6 +237,7 @@ async function loadRooms() {
     roomsLoaded = true;
     // 同步顶部红点
     const myRooms = list.filter(b => b.joined);
+    const friendRooms = list.filter(b => b.is_friend);
     roomsDot.hidden = myRooms.length === 0;
 
     if (list.length === 0) {
@@ -244,16 +245,42 @@ async function loadRooms() {
       drawerSub.textContent = '0 个房间';
       return;
     }
-    drawerSub.textContent = `${list.length} 个房间 · ${myRooms.length} 个我已加入`;
+    let subText = `${list.length} 个房间 · ${myRooms.length} 个我已加入`;
+    if (friendRooms.length) subText += ` · ${friendRooms.length} 个好友房间`;
+    drawerSub.textContent = subText;
 
     drawerList.innerHTML = list.map(b => roomCardHTML(b)).join('');
     // 绑定事件
     $$('.room-card', drawerList).forEach(card => {
       const bid = card.dataset.id;
       const live = card.dataset.live === '1';
-      card.addEventListener('click', () => {
-        // 进行中 → 记分列表页；等待中 → 对战大厅
-        location.href = live ? `matches.html?id=${bid}` : `battle.html?id=${bid}`;
+      const joined = card.dataset.joined === '1';
+      const isFull = card.dataset.full === '1';
+      card.addEventListener('click', async () => {
+        // 进行中 -> 记分列表页
+        if (live) {
+          location.href = `matches.html?id=${bid}`;
+          return;
+        }
+        // 满员且未加入 -> 查看详情（记分列表页）
+        if (isFull && !joined) {
+          location.href = `matches.html?id=${bid}`;
+          return;
+        }
+        // 好友房间未加入且未满 -> 先加入再进入
+        if (!joined) {
+          try {
+            await API.joinBattle(bid);
+            toast('已加入对战');
+          } catch (e) {
+            // 加入失败仍然查看详情
+            toast(e.message || '加入失败', true);
+            location.href = `matches.html?id=${bid}`;
+            return;
+          }
+        }
+        // 等待中 -> 对战大厅
+        location.href = `battle.html?id=${bid}`;
       });
     });
   } catch (e) {
@@ -265,22 +292,40 @@ function roomCardHTML(b) {
   const isLive = b.status === 'ongoing';
   const isWaiting = b.status === 'waiting';
   const isCreator = b.creator_id === (currentUser && currentUser.id);
+  const isFriendRoom = b.is_friend;
+  const isFull = b.is_full;
   const typeLabel = b.type === 'singles' ? '单打' : '双打';
   const bestOfLabel = b.best_of === 1 ? '一局' : '三局两胜';
-  const tag = isCreator
-    ? '<span class="room-tag joined">我创建的</span>'
-    : '<span class="room-tag joined">已加入</span>';
+
+  let tag = '';
+  if (isCreator) {
+    tag = '<span class="room-tag joined">我创建的</span>';
+  } else if (b.joined) {
+    tag = '<span class="room-tag joined">已加入</span>';
+  } else if (isFriendRoom) {
+    tag = '<span class="room-tag" style="background:rgba(58,212,255,0.15);color:var(--cyan);">好友房间</span>';
+  }
 
   const avatars = (b.players || []).slice(0, 5).map(p => `
     <div class="mini-ava" title="${p.nickname}">${avatarHTML(p.avatar)}</div>
   `).join('');
   const more = (b.players && b.players.length > 5)
     ? `<span class="mini-name">+${b.players.length - 5}</span>` : '';
-  const cta = isLive ? '进入对战大厅' : '进入房间';
+
+  let cta = '';
+  if (isLive) {
+    cta = '进入对战大厅';
+  } else if (isFull && !b.joined) {
+    cta = '查看详情';
+  } else if (isFriendRoom && !b.joined) {
+    cta = '加入对战';
+  } else {
+    cta = '进入房间';
+  }
 
   return `
     <div class="room-card joined ${isLive ? 'live' : ''} ${isWaiting ? 'waiting' : ''}"
-         data-id="${b.id}" data-joined="1" data-live="${isLive ? 1 : 0}" data-waiting="${isWaiting ? 1 : 0}">
+         data-id="${b.id}" data-joined="${b.joined ? 1 : 0}" data-live="${isLive ? 1 : 0}" data-waiting="${isWaiting ? 1 : 0}" data-full="${isFull ? 1 : 0}">
       <div class="room-row1">
         <span class="room-id">#${b.id}</span>
         ${tag}

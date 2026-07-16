@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from redis_store import Store
 from scoring import apply_point, undo, reset, court_info
+from nickname import generate_random_avatar
 
 log = logging.getLogger("letsplay")
 # 让 startup/shutdown 里的 log.info 能被写入 letsplay.log（sweeper 启动 / 完成清理）
@@ -151,7 +152,24 @@ def client_ip(req: Request) -> str:
 
 
 def me(req: Request) -> dict:
+    """优先用 token 认证，回退到 IP。"""
+    auth = req.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        token = auth[7:]
+        user = store.get_user_by_token(token)
+        if user:
+            return user
+    # 回退到 IP 认证（兼容旧流程）
     return store.get_or_create_user(client_ip(req))
+
+
+def get_auth_user(req: Request) -> dict:
+    """仅用 token 认证，无 token 返回 None。"""
+    auth = req.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        token = auth[7:]
+        return store.get_user_by_token(token)
+    return None
 
 
 # ---------- 身份 ----------
@@ -181,6 +199,110 @@ def update_profile(body: ProfileBody, req: Request):
     if not updated:
         raise HTTPException(404, "用户不存在")
     return updated
+
+
+# ---------- 注册 / 登录 ----------
+class RegisterBody(BaseModel):
+    login_key: str
+    gender: str  # male | female | unknown
+    nickname: str = None
+    avatar: str = None
+
+
+class LoginBody(BaseModel):
+    login_key: str
+
+
+@app.post("/api/auth/register")
+def auth_register(body: RegisterBody, req: Request):
+    """首次注册：密钥查重，IP 生成昵称头像，返回 user + token。"""
+    key = body.login_key.strip()
+    if not key or len(key) < 3:
+        raise HTTPException(400, "密钥至少 3 个字符")
+    if len(key) > 64:
+        raise HTTPException(400, "密钥最多 64 个字符")
+    if body.gender not in ("male", "female", "unknown"):
+        raise HTTPException(400, "性别只能为 male、female 或 unknown")
+    nick = body.nickname.strip() if body.nickname and body.nickname.strip() else None
+    if nick and len(nick) > 20:
+        raise HTTPException(400, "昵称最多 20 个字符")
+    try:
+        user = store.register_user(key, body.gender, client_ip(req), nickname=nick, avatar=body.avatar)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    return user
+
+
+@app.post("/api/auth/login")
+def auth_login(body: LoginBody):
+    """密钥登录：返回 user + token。"""
+    key = body.login_key.strip()
+    if not key:
+        raise HTTPException(400, "请输入密钥")
+    try:
+        user = store.login_user(key)
+    except ValueError as e:
+        raise HTTPException(401, str(e))
+    return user
+
+
+@app.get("/api/avatar/random")
+def random_avatar():
+    """返回一个随机头像 SVG。"""
+    return {"avatar": generate_random_avatar()}
+
+
+# ---------- 好友 ----------
+@app.get("/api/friends")
+def list_friends(req: Request):
+    """获取好友列表。"""
+    user = me(req)
+    return {"friends": store.get_friends(user["id"])}
+
+
+@app.get("/api/friends/requests")
+def list_friend_requests(req: Request):
+    """获取待处理的好友请求。"""
+    user = me(req)
+    return {"requests": store.get_friend_requests(user["id"])}
+
+
+class FriendRequestBody(BaseModel):
+    to_uid: str
+
+
+@app.post("/api/friends/request")
+def send_friend_req(body: FriendRequestBody, req: Request):
+    """发送好友请求。"""
+    user = me(req)
+    try:
+        result = store.send_friend_request(user["id"], body.to_uid)
+        return result
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+class FriendAcceptBody(BaseModel):
+    from_uid: str
+
+
+@app.post("/api/friends/accept")
+def accept_friend(body: FriendAcceptBody, req: Request):
+    """接受好友请求。"""
+    user = me(req)
+    try:
+        result = store.accept_friend_request(body.from_uid, user["id"])
+        return result
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+# ---------- 个人统计 ----------
+@app.get("/api/me/stats")
+def my_stats(req: Request):
+    """获取当前用户的对战统计。"""
+    user = me(req)
+    return store.get_user_stats(user["id"])
 
 
 # ---------- 对战房间列表 ----------
@@ -535,6 +657,11 @@ def watch_page():
 def admin_page(req: Request):
     require_admin(req)
     return FileResponse(os.path.join(ROOT_DIR, "admin.html"))
+
+
+@app.get("/profile.html")
+def profile_page():
+    return FileResponse(os.path.join(ROOT_DIR, "profile.html"))
 
 
 # PWA 图标与清单文件

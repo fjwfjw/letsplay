@@ -248,8 +248,8 @@ function showLoginDialog() {
           <button class="nick-gender-btn" data-gender="female">女</button>
         </div>
 
-        <input class="nick-input" id="regKeyInput" type="text" maxlength="64" placeholder="设置登录密钥（3-64位）" style="margin-top:16px;" />
-        <div class="nick-modal-hint">密钥用于后续登录，请妥善保管</div>
+        <input class="nick-input" id="regKeyInput" type="text" maxlength="20" placeholder="设置登录密钥（6-20位）" style="margin-top:16px;" />
+        <div class="nick-modal-hint">需包含大写字母、小写字母和数字</div>
 
         <div id="registerError" style="color:var(--coral);font-size:12px;margin-top:8px;display:none;"></div>
 
@@ -260,7 +260,7 @@ function showLoginDialog() {
 
       <!-- 登录面板 -->
       <div id="loginPanel" style="display:none;">
-        <input class="nick-input" id="loginKeyInput" type="text" maxlength="64" placeholder="输入登录密钥" />
+        <input class="nick-input" id="loginKeyInput" type="text" maxlength="20" placeholder="输入登录密钥" />
         <div class="nick-modal-hint">输入注册时设置的密钥</div>
 
         <div id="loginError" style="color:var(--coral);font-size:12px;margin-top:8px;display:none;"></div>
@@ -358,8 +358,13 @@ function showLoginDialog() {
       errEl.style.display = 'block';
       return;
     }
-    if (!key || key.length < 3) {
-      errEl.textContent = '密钥至少 3 个字符';
+    if (!key || key.length < 6 || key.length > 20) {
+      errEl.textContent = '密钥长度 6-20 位';
+      errEl.style.display = 'block';
+      return;
+    }
+    if (!/[A-Z]/.test(key) || !/[a-z]/.test(key) || !/[0-9]/.test(key)) {
+      errEl.textContent = '密钥需包含大写字母、小写字母和数字';
       errEl.style.display = 'block';
       return;
     }

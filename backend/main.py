@@ -217,10 +217,15 @@ class LoginBody(BaseModel):
 def auth_register(body: RegisterBody, req: Request):
     """首次注册：密钥查重，IP 生成昵称头像，返回 user + token。"""
     key = body.login_key.strip()
-    if not key or len(key) < 3:
-        raise HTTPException(400, "密钥至少 3 个字符")
-    if len(key) > 64:
-        raise HTTPException(400, "密钥最多 64 个字符")
+    # 密钥规则：6-20位，必须包含大写字母、小写字母、数字
+    if not key or len(key) < 6 or len(key) > 20:
+        raise HTTPException(400, "密钥长度 6-20 位")
+    if not any(c.isupper() for c in key):
+        raise HTTPException(400, "密钥必须包含大写字母")
+    if not any(c.islower() for c in key):
+        raise HTTPException(400, "密钥必须包含小写字母")
+    if not any(c.isdigit() for c in key):
+        raise HTTPException(400, "密钥必须包含数字")
     if body.gender not in ("male", "female", "unknown"):
         raise HTTPException(400, "性别只能为 male、female 或 unknown")
     nick = body.nickname.strip() if body.nickname and body.nickname.strip() else None

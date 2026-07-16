@@ -61,8 +61,8 @@ class Store:
             "ip": data.get("ip", ""),
         }
 
-    def update_profile(self, uid: str, nickname: str = None, gender: str = None) -> dict:
-        """更新用户昵称和/或性别。"""
+    def update_profile(self, uid: str, nickname: str = None, gender: str = None, avatar: str = None) -> dict:
+        """更新用户昵称、性别和/或头像。"""
         key = f"user:{uid}"
         if not self.r.exists(key):
             return None
@@ -71,6 +71,8 @@ class Store:
             mapping["nickname"] = nickname
         if gender is not None:
             mapping["gender"] = gender
+        if avatar is not None:
+            mapping["avatar"] = avatar
         if mapping:
             self.r.hset(key, mapping=mapping)
         self.r.expire(key, USER_TTL)

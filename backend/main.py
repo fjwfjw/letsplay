@@ -181,6 +181,7 @@ def api_me(req: Request):
 class ProfileBody(BaseModel):
     nickname: str = None
     gender: str = None  # male | female | unknown
+    avatar: str = None
 
 
 @app.put("/api/me/profile")
@@ -188,6 +189,7 @@ def update_profile(body: ProfileBody, req: Request):
     user = me(req)
     nick = body.nickname.strip() if body.nickname else None
     gender = body.gender.strip() if body.gender else None
+    avatar = body.avatar.strip() if body.avatar else None
     if nick is not None:
         if not nick:
             raise HTTPException(400, "昵称不能为空")
@@ -195,7 +197,7 @@ def update_profile(body: ProfileBody, req: Request):
             raise HTTPException(400, "昵称最多 20 个字符")
     if gender is not None and gender not in ("male", "female", "unknown"):
         raise HTTPException(400, "性别只能为 male、female 或 unknown")
-    updated = store.update_profile(user["id"], nickname=nick, gender=gender)
+    updated = store.update_profile(user["id"], nickname=nick, gender=gender, avatar=avatar)
     if not updated:
         raise HTTPException(404, "用户不存在")
     return updated

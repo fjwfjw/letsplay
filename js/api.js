@@ -70,10 +70,11 @@ const API = {
     return data;
   },
   me() { return this._fetch('/api/me'); },
-  updateProfile(nickname, gender) {
+  updateProfile(nickname, gender, avatar) {
     const body = {};
     if (nickname !== undefined) body.nickname = nickname;
     if (gender !== undefined) body.gender = gender;
+    if (avatar !== undefined) body.avatar = avatar;
     return this._fetch('/api/me/profile', {
       method: 'PUT',
       body: JSON.stringify(body),
@@ -453,7 +454,10 @@ function openNicknameEditor(user) {
   overlay.innerHTML = `
     <div class="nick-modal">
       <div class="nick-modal-title">个人资料</div>
-      <div class="nick-modal-ava">${avatarHTML(user.avatar)}</div>
+      <div style="position:relative;width:64px;height:64px;margin:0 auto 12px;">
+        <div class="nick-modal-ava" style="width:64px;height:64px;">${avatarHTML(user.avatar)}</div>
+        <button id="changeAvaBtn" type="button" style="position:absolute;bottom:-2px;right:-2px;width:22px;height:22px;border-radius:50%;background:var(--lime);color:var(--bg);border:2px solid var(--bg-1);font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;">↻</button>
+      </div>
       <input class="nick-input" type="text" maxlength="20" placeholder="输入新昵称" />
       <div class="nick-modal-hint">最多 20 个字符</div>
       <div class="nick-gender-label">性别（用于混双/分性别分配）</div>
@@ -478,6 +482,21 @@ function openNicknameEditor(user) {
   input.value = user.nickname;
   input.focus();
   input.select();
+
+  // 换头像
+  let currentAvatar = user.avatar || '';
+  $('#changeAvaBtn', overlay).addEventListener('click', async () => {
+    const btn = $('#changeAvaBtn');
+    btn.disabled = true;
+    btn.textContent = '...';
+    try {
+      const data = await API.getRandomAvatar();
+      currentAvatar = data.avatar;
+      $('.nick-modal-ava', overlay).innerHTML = data.avatar;
+    } catch { /* ignore */ }
+    btn.disabled = false;
+    btn.textContent = '↻';
+  });
 
   // 性别选择
   let selectedGender = user.gender || 'unknown';
@@ -510,27 +529,34 @@ function openNicknameEditor(user) {
     if (!nick) { toast('昵称不能为空', true); return; }
     const genderChanged = selectedGender !== (user.gender || 'unknown');
     const nickChanged = nick !== user.nickname;
-    if (!nickChanged && !genderChanged) { close(); return; }
+    const avatarChanged = currentAvatar !== (user.avatar || '');
+    if (!nickChanged && !genderChanged && !avatarChanged) { close(); return; }
     saveBtn.disabled = true;
     saveBtn.textContent = '保存中…';
     try {
       const updated = await API.updateProfile(
         nickChanged ? nick : undefined,
-        genderChanged ? selectedGender : undefined
+        genderChanged ? selectedGender : undefined,
+        avatarChanged ? currentAvatar : undefined
       );
       // 更新 chip 显示
       const chip = $('#userChip');
       if (chip) {
         const nameEl = $('.name', chip);
         if (nameEl) nameEl.textContent = updated.nickname;
+        // 更新头像
+        const avaEl = $('.ava', chip);
+        if (avaEl && avatarChanged) avaEl.innerHTML = updated.avatar;
         // 更新 user 对象供下次编辑使用
         user.nickname = updated.nickname;
         user.gender = updated.gender;
+        user.avatar = updated.avatar;
       }
       // 更新全局 currentUser（如果存在）
       if (typeof currentUser !== 'undefined' && currentUser) {
         currentUser.nickname = updated.nickname;
         currentUser.gender = updated.gender;
+        currentUser.avatar = updated.avatar;
       }
       toast('资料已更新');
       close();
